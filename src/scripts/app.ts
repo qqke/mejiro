@@ -191,6 +191,47 @@ type SurveyResponse = {
   created_at: string;
 };
 
+type SafetyEventKind = "drill" | "inspection" | "checkin" | "other";
+type SafetyEventStatus = "planned" | "active" | "completed" | "cancelled";
+type SafetyCheckinStatus = "safe" | "needs_help";
+type BoardTaskStatus = "open" | "in_progress" | "done" | "cancelled";
+type BoardTaskPriority = "normal" | "high" | "urgent";
+
+type SafetyEvent = {
+  id: string;
+  title: string;
+  kind: SafetyEventKind;
+  status: SafetyEventStatus;
+  scheduled_at: string;
+  location: string | null;
+  note: string | null;
+  created_by: string;
+  created_at: string;
+};
+
+type SafetyCheckin = {
+  id: string;
+  event_id: string;
+  user_id: string;
+  status: SafetyCheckinStatus;
+  comment: string | null;
+  created_at: string;
+};
+
+type BoardTask = {
+  id: string;
+  title: string;
+  description: string;
+  status: BoardTaskStatus;
+  priority: BoardTaskPriority;
+  assignee_id: string | null;
+  due_date: string | null;
+  created_by: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -203,6 +244,7 @@ let maintenanceFilter: MaintenanceStatus | "all" = "all";
 let financeFilter: FinanceEntryType | "all" = "all";
 let assetFilter: AssetStatus | "all" = "all";
 let vendorsCache: Vendor[] = [];
+let taskFilter: BoardTaskStatus | "all" = "all";
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -284,6 +326,38 @@ const contractStatusLabels: Record<ContractStatus, string> = {
   renewal_due: "更新注意",
   expired: "期限切れ",
   terminated: "終了",
+};
+
+const safetyKindLabels: Record<SafetyEventKind, string> = {
+  drill: "防災訓練",
+  inspection: "設備点検",
+  checkin: "安否確認",
+  other: "その他",
+};
+
+const safetyEventStatusLabels: Record<SafetyEventStatus, string> = {
+  planned: "予定",
+  active: "受付中",
+  completed: "完了",
+  cancelled: "中止",
+};
+
+const safetyCheckinLabels: Record<SafetyCheckinStatus, string> = {
+  safe: "無事",
+  needs_help: "要支援",
+};
+
+const boardTaskStatusLabels: Record<BoardTaskStatus, string> = {
+  open: "未着手",
+  in_progress: "対応中",
+  done: "完了",
+  cancelled: "中止",
+};
+
+const boardTaskPriorityLabels: Record<BoardTaskPriority, string> = {
+  normal: "通常",
+  high: "高",
+  urgent: "緊急",
 };
 
 const roomPalette = ["#176b5b", "#3f6fb5", "#9a5b13", "#7c3aed", "#be3455", "#2f7d32"];
@@ -412,6 +486,8 @@ async function init() {
   if (page === "vendors") await initVendors();
   if (page === "residents") await initResidents();
   if (page === "surveys") await initSurveys();
+  if (page === "safety") await initSafety();
+  if (page === "tasks") await initTasks();
   if (page === "admin") await initAdmin();
 }
 
@@ -1807,6 +1883,216 @@ function isSurveyOpen(survey: Survey) {
   return survey.is_open && (!survey.closes_at || new Date(survey.closes_at) > new Date());
 }
 
+async function initSafety() {
+  qs("[data-safety-form]")?.classList.toggle("hidden", !canManage());
+  await renderSafetyPage();
+
+  qs<HTMLFormElement>("[data-safety-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("safety_events").insert({
+      title: String(form.get("title")),
+      kind: String(form.get("kind")),
+      status: String(form.get("status")),
+      scheduled_at: new Date(String(form.get("scheduled_at"))).toISOString(),
+      location: String(form.get("location") || "") || null,
+      note: String(form.get("note") || "") || null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-safety-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-safety-status]", "防災・安否イベントを登録しました。");
+    await renderSafetyPage();
+  });
+}
+
+async function renderSafetyPage() {
+  const [{ data: events }, { data: checkins }] = await Promise.all([
+    supabase!.from("safety_events").select("*").order("scheduled_at", { ascending: false }),
+    supabase!.from("safety_checkins").select("*").order("created_at", { ascending: false }),
+  ]);
+  const safetyEvents = (events ?? []) as SafetyEvent[];
+  const safetyCheckins = (checkins ?? []) as SafetyCheckin[];
+  setText("[data-metric='safety-planned']", String(safetyEvents.filter((event) => event.status === "planned").length));
+  setText("[data-metric='safety-confirmed']", String(safetyCheckins.filter((checkin) => checkin.status === "safe").length));
+  setText("[data-metric='safety-help']", String(safetyCheckins.filter((checkin) => checkin.status === "needs_help").length));
+  renderSafetyList(safetyEvents, safetyCheckins);
+}
+
+function renderSafetyList(events: SafetyEvent[], checkins: SafetyCheckin[]) {
+  const container = qs("[data-safety-list]");
+  if (!container) return;
+  if (!events.length) {
+    container.innerHTML = `<p class="meta">防災・安否イベントはありません。</p>`;
+    return;
+  }
+  container.innerHTML = events
+    .map((event) => {
+      const eventCheckins = checkins.filter((checkin) => checkin.event_id === event.id);
+      const myCheckin = eventCheckins.find((checkin) => checkin.user_id === currentProfile!.id);
+      const active = event.status === "active";
+      return `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(event.title)}</strong>
+              <p class="meta">${safetyKindLabels[event.kind]} / ${formatDateTime(event.scheduled_at)}${event.location ? ` / ${escapeHtml(event.location)}` : ""}</p>
+            </div>
+            ${safetyEventStatusBadge(event.status)}
+          </div>
+          ${event.note ? `<p>${escapeHtml(event.note)}</p>` : ""}
+          <p class="meta">無事 ${eventCheckins.filter((checkin) => checkin.status === "safe").length} / 要支援 ${eventCheckins.filter((checkin) => checkin.status === "needs_help").length}</p>
+          <div class="toolbar">
+            <button class="button ${myCheckin?.status === "safe" ? "" : "secondary"}" type="button" data-safety-safe="${event.id}" ${active ? "" : "disabled"}>無事</button>
+            <button class="button ${myCheckin?.status === "needs_help" ? "danger" : "secondary"}" type="button" data-safety-help="${event.id}" ${active ? "" : "disabled"}>要支援</button>
+            ${canManage() && event.status !== "completed" ? `<button class="button" type="button" data-safety-complete="${event.id}">完了</button>` : ""}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-safety-safe]").forEach((button) => {
+    button.addEventListener("click", () => respondSafety(button.dataset.safetySafe!, "safe"));
+  });
+  qsa<HTMLButtonElement>("[data-safety-help]").forEach((button) => {
+    button.addEventListener("click", () => respondSafety(button.dataset.safetyHelp!, "needs_help"));
+  });
+  qsa<HTMLButtonElement>("[data-safety-complete]").forEach((button) => {
+    button.addEventListener("click", () => updateSafetyEventStatus(button.dataset.safetyComplete!, "completed"));
+  });
+}
+
+async function respondSafety(eventId: string, status: SafetyCheckinStatus) {
+  const { error } = await supabase!.from("safety_checkins").upsert(
+    {
+      event_id: eventId,
+      user_id: currentProfile!.id,
+      status,
+      comment: safetyCheckinLabels[status],
+    },
+    { onConflict: "event_id,user_id" },
+  );
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderSafetyPage();
+}
+
+async function updateSafetyEventStatus(id: string, status: SafetyEventStatus) {
+  const { error } = await supabase!.from("safety_events").update({ status }).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderSafetyPage();
+}
+
+async function initTasks() {
+  qs("[data-task-form]")?.classList.toggle("hidden", !canManage());
+  await renderTasksPage();
+
+  qsa<HTMLButtonElement>("[data-task-filter]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      taskFilter = (button.dataset.taskFilter as BoardTaskStatus | "all") ?? "all";
+      qsa<HTMLButtonElement>("[data-task-filter]").forEach((item) => item.classList.toggle("active", item === button));
+      await renderTasksPage();
+    });
+  });
+
+  qs<HTMLFormElement>("[data-task-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const assignee = String(form.get("assignee_id") || "").trim();
+    const { error } = await supabase!.from("board_tasks").insert({
+      title: String(form.get("title")),
+      description: String(form.get("description")),
+      priority: String(form.get("priority")),
+      due_date: String(form.get("due_date") || "") || null,
+      assignee_id: assignee || currentProfile!.id,
+      created_by: currentProfile!.id,
+      status: "open",
+    });
+    if (error) {
+      setStatus("[data-task-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-task-status]", "タスクを作成しました。");
+    await renderTasksPage();
+  });
+}
+
+async function renderTasksPage() {
+  let query = supabase!.from("board_tasks").select("*").order("updated_at", { ascending: false });
+  if (taskFilter !== "all") query = query.eq("status", taskFilter);
+  const { data } = await query;
+  const tasks = (data ?? []) as BoardTask[];
+  const today = new Date().toISOString().slice(0, 10);
+  setText("[data-metric='task-open']", String(tasks.filter((task) => task.status === "open").length));
+  setText("[data-metric='task-progress']", String(tasks.filter((task) => task.status === "in_progress").length));
+  setText("[data-metric='task-overdue']", String(tasks.filter((task) => task.status !== "done" && task.due_date && task.due_date < today).length));
+  renderTaskList(tasks);
+}
+
+function renderTaskList(tasks: BoardTask[]) {
+  const container = qs("[data-task-list]");
+  if (!container) return;
+  if (!tasks.length) {
+    container.innerHTML = `<p class="meta">タスクはありません。</p>`;
+    return;
+  }
+  container.innerHTML = tasks
+    .map(
+      (task) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(task.title)}</strong>
+              <p class="meta">${boardTaskPriorityLabels[task.priority]}${task.due_date ? ` / 期限 ${escapeHtml(task.due_date)}` : ""}</p>
+            </div>
+            ${boardTaskStatusBadge(task.status)}
+          </div>
+          <p>${escapeHtml(task.description)}</p>
+          ${
+            canManage() || task.assignee_id === currentProfile?.id
+              ? `<div class="toolbar">
+                  <button class="button secondary" type="button" data-task-progress="${task.id}">対応中</button>
+                  <button class="button" type="button" data-task-done="${task.id}">完了</button>
+                  <button class="button danger" type="button" data-task-cancel="${task.id}">中止</button>
+                </div>`
+              : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-task-progress]").forEach((button) => {
+    button.addEventListener("click", () => updateTaskStatus(button.dataset.taskProgress!, "in_progress"));
+  });
+  qsa<HTMLButtonElement>("[data-task-done]").forEach((button) => {
+    button.addEventListener("click", () => updateTaskStatus(button.dataset.taskDone!, "done"));
+  });
+  qsa<HTMLButtonElement>("[data-task-cancel]").forEach((button) => {
+    button.addEventListener("click", () => updateTaskStatus(button.dataset.taskCancel!, "cancelled"));
+  });
+}
+
+async function updateTaskStatus(id: string, status: BoardTaskStatus) {
+  const patch: Record<string, string | null> = { status, completed_at: status === "done" ? new Date().toISOString() : null };
+  const { error } = await supabase!.from("board_tasks").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderTasksPage();
+}
+
 async function initAdmin() {
   if (!isAdmin()) {
     qs(".main")!.innerHTML = `<section class="panel"><h1>アクセス権限がありません</h1><p class="meta">管理者のみ利用できます。</p></section>`;
@@ -1966,6 +2252,16 @@ function assetStatusBadge(status: AssetStatus) {
 function contractStatusBadge(status: ContractStatus) {
   const className = status === "active" ? "success" : status === "renewal_due" ? "warning" : "danger";
   return `<span class="badge ${className}">${contractStatusLabels[status]}</span>`;
+}
+
+function safetyEventStatusBadge(status: SafetyEventStatus) {
+  const className = status === "completed" ? "success" : status === "active" || status === "planned" ? "warning" : "danger";
+  return `<span class="badge ${className}">${safetyEventStatusLabels[status]}</span>`;
+}
+
+function boardTaskStatusBadge(status: BoardTaskStatus) {
+  const className = status === "done" ? "success" : status === "open" || status === "in_progress" ? "warning" : "danger";
+  return `<span class="badge ${className}">${boardTaskStatusLabels[status]}</span>`;
 }
 
 void init();

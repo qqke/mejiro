@@ -17,6 +17,11 @@ create type public.finance_entry_type as enum ('income', 'expense');
 create type public.asset_category as enum ('equipment', 'fixture', 'disaster', 'document', 'other');
 create type public.asset_status as enum ('active', 'inspection_due', 'repair_needed', 'retired');
 create type public.contract_status as enum ('active', 'renewal_due', 'expired', 'terminated');
+create type public.safety_event_kind as enum ('drill', 'inspection', 'checkin', 'other');
+create type public.safety_event_status as enum ('planned', 'active', 'completed', 'cancelled');
+create type public.safety_checkin_status as enum ('safe', 'needs_help');
+create type public.board_task_status as enum ('open', 'in_progress', 'done', 'cancelled');
+create type public.board_task_priority as enum ('normal', 'high', 'urgent');
 
 create schema if not exists app_private;
 
@@ -216,6 +221,44 @@ create table public.survey_responses (
   unique (survey_id, user_id)
 );
 
+create table public.safety_events (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  kind public.safety_event_kind not null default 'other',
+  status public.safety_event_status not null default 'planned',
+  scheduled_at timestamptz not null,
+  location text,
+  note text,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.safety_checkins (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.safety_events(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  status public.safety_checkin_status not null default 'safe',
+  comment text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (event_id, user_id)
+);
+
+create table public.board_tasks (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  description text not null,
+  status public.board_task_status not null default 'open',
+  priority public.board_task_priority not null default 'normal',
+  assignee_id uuid references public.profiles(id),
+  due_date date,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create or replace function app_private.has_role(required_roles public.app_role[])
 returns boolean
 language sql
@@ -299,6 +342,18 @@ create trigger survey_responses_set_updated_at
 before update on public.survey_responses
 for each row execute function public.set_updated_at();
 
+create trigger safety_events_set_updated_at
+before update on public.safety_events
+for each row execute function public.set_updated_at();
+
+create trigger safety_checkins_set_updated_at
+before update on public.safety_checkins
+for each row execute function public.set_updated_at();
+
+create trigger board_tasks_set_updated_at
+before update on public.board_tasks
+for each row execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.room_bookings enable row level security;
@@ -315,6 +370,9 @@ alter table public.vendors enable row level security;
 alter table public.vendor_contracts enable row level security;
 alter table public.surveys enable row level security;
 alter table public.survey_responses enable row level security;
+alter table public.safety_events enable row level security;
+alter table public.safety_checkins enable row level security;
+alter table public.board_tasks enable row level security;
 
 create policy "profiles_select_own_or_manager"
 on public.profiles for select
@@ -570,6 +628,54 @@ to authenticated
 using (user_id = auth.uid())
 with check (user_id = auth.uid());
 
+create policy "safety_events_select_authenticated"
+on public.safety_events for select
+to authenticated
+using (true);
+
+create policy "safety_events_manager_insert"
+on public.safety_events for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "safety_events_manager_update"
+on public.safety_events for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "safety_checkins_select_own_or_manager"
+on public.safety_checkins for select
+to authenticated
+using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "safety_checkins_insert_own"
+on public.safety_checkins for insert
+to authenticated
+with check (user_id = auth.uid());
+
+create policy "safety_checkins_update_own"
+on public.safety_checkins for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
+create policy "board_tasks_select_authenticated"
+on public.board_tasks for select
+to authenticated
+using (true);
+
+create policy "board_tasks_manager_insert"
+on public.board_tasks for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "board_tasks_manager_update"
+on public.board_tasks for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]) or assignee_id = auth.uid())
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]) or assignee_id = auth.uid());
+
 insert into public.rooms (name, capacity, notes)
 values
   ('集会室 A', 24, '理事会・小規模会議向け'),
@@ -593,3 +699,6 @@ grant select, insert, update on public.vendors to authenticated;
 grant select, insert, update on public.vendor_contracts to authenticated;
 grant select, insert, update on public.surveys to authenticated;
 grant select, insert, update on public.survey_responses to authenticated;
+grant select, insert, update on public.safety_events to authenticated;
+grant select, insert, update on public.safety_checkins to authenticated;
+grant select, insert, update on public.board_tasks to authenticated;

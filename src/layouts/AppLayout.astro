@@ -6,12 +6,14 @@ import {
   Building2,
   CalendarDays,
   ClipboardList,
+  ClipboardCheck,
   FileText,
   HandCoins,
   Home,
   LogOut,
   NotebookTabs,
   Settings,
+  ShieldCheck,
   Store,
   Vote,
   Wrench,
@@ -32,6 +34,8 @@ type Props = {
     | "vendors"
     | "residents"
     | "surveys"
+    | "safety"
+    | "tasks"
     | "admin";
 };
 
@@ -51,6 +55,8 @@ const navItems = [
   { href: asset("/vendors/"), label: "業者契約", page: "vendors", icon: Store },
   { href: asset("/residents/"), label: "住民名簿", page: "residents", icon: NotebookTabs },
   { href: asset("/surveys/"), label: "意見収集", page: "surveys", icon: Vote },
+  { href: asset("/safety/"), label: "防災安否", page: "safety", icon: ShieldCheck },
+  { href: asset("/tasks/"), label: "理事タスク", page: "tasks", icon: ClipboardCheck },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

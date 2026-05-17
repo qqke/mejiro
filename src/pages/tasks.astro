@@ -1,0 +1,74 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { ClipboardCheck, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="理事タスク" page="tasks">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Board Tasks</p>
+      <h1>理事タスク</h1>
+      <p class="lead">会議後の確認事項、修繕調整、業者連絡、住民対応などの担当と期限を管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="タスク指標">
+    <div class="panel metric">
+      <span>未着手</span>
+      <strong data-metric="task-open">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>対応中</span>
+      <strong data-metric="task-progress">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>期限超過</span>
+      <strong data-metric="task-overdue">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-task-form>
+      <h2><Plus size={18} aria-hidden="true" /> タスクを作成</h2>
+      <div class="field">
+        <label for="task-title">件名</label>
+        <input class="input" id="task-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="task-priority">優先度</label>
+          <select class="select" id="task-priority" name="priority">
+            <option value="normal">通常</option>
+            <option value="high">高</option>
+            <option value="urgent">緊急</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="task-due-date">期限</label>
+          <input class="input" id="task-due-date" name="due_date" type="date" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="task-assignee">担当者 ID</label>
+        <input class="input" id="task-assignee" name="assignee_id" placeholder="未指定なら作成者が担当" />
+      </div>
+      <div class="field">
+        <label for="task-description">内容</label>
+        <textarea class="textarea" id="task-description" name="description" required></textarea>
+      </div>
+      <button class="button" type="submit">作成する</button>
+      <p class="status" data-task-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><ClipboardCheck size={18} aria-hidden="true" /> タスク一覧</h2>
+      <div class="task-filters segmented" aria-label="タスクフィルター">
+        <button class="segment active" type="button" data-task-filter="all">全体</button>
+        <button class="segment" type="button" data-task-filter="open">未着手</button>
+        <button class="segment" type="button" data-task-filter="in_progress">対応中</button>
+        <button class="segment" type="button" data-task-filter="done">完了</button>
+      </div>
+      <div class="list" data-task-list></div>
+    </div>
+  </section>
+</AppLayout>

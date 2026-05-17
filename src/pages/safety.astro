@@ -1,0 +1,79 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Plus, ShieldCheck } from "@lucide/astro";
+---
+
+<AppLayout title="防災安否" page="safety">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Safety</p>
+      <h1>防災安否</h1>
+      <p class="lead">防災訓練、避難確認、安否確認を記録し、住民の回答状況を把握します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="防災指標">
+    <div class="panel metric">
+      <span>予定</span>
+      <strong data-metric="safety-planned">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>確認済み</span>
+      <strong data-metric="safety-confirmed">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>要支援</span>
+      <strong data-metric="safety-help">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-safety-form>
+      <h2><Plus size={18} aria-hidden="true" /> 訓練・確認を登録</h2>
+      <div class="field">
+        <label for="safety-title">件名</label>
+        <input class="input" id="safety-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="safety-kind">種別</label>
+          <select class="select" id="safety-kind" name="kind">
+            <option value="drill">防災訓練</option>
+            <option value="inspection">設備点検</option>
+            <option value="checkin">安否確認</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="safety-status">状態</label>
+          <select class="select" id="safety-status" name="status">
+            <option value="planned">予定</option>
+            <option value="active">受付中</option>
+            <option value="completed">完了</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="safety-scheduled-at">日時</label>
+          <input class="input" id="safety-scheduled-at" name="scheduled_at" type="datetime-local" required />
+        </div>
+        <div class="field">
+          <label for="safety-location">場所</label>
+          <input class="input" id="safety-location" name="location" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="safety-note">内容</label>
+        <textarea class="textarea" id="safety-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">登録する</button>
+      <p class="status" data-safety-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><ShieldCheck size={18} aria-hidden="true" /> 防災・安否一覧</h2>
+      <div class="list" data-safety-list></div>
+    </div>
+  </section>
+</AppLayout>
