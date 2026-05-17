@@ -232,6 +232,50 @@ type BoardTask = {
   updated_at: string;
 };
 
+type ParkingSpaceKind = "car" | "bicycle" | "motorbike";
+type ParkingPermitStatus = "pending" | "active" | "rejected" | "ended";
+type ResidentRequestCategory = "noise" | "rule" | "neighbor" | "common_area" | "other";
+type ResidentRequestStatus = "open" | "in_progress" | "resolved" | "closed";
+type ResidentRequestVisibility = "private" | "board" | "public";
+
+type ParkingSpace = {
+  id: string;
+  code: string;
+  kind: ParkingSpaceKind;
+  location: string | null;
+  monthly_fee: number | null;
+  is_active: boolean;
+  is_available: boolean;
+};
+
+type ParkingPermit = {
+  id: string;
+  space_id: string;
+  user_id: string;
+  vehicle_label: string;
+  status: ParkingPermitStatus;
+  start_date: string;
+  end_date: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  parking_spaces?: Pick<ParkingSpace, "code" | "kind" | "location"> | null;
+};
+
+type ResidentRequest = {
+  id: string;
+  title: string;
+  category: ResidentRequestCategory;
+  visibility: ResidentRequestVisibility;
+  status: ResidentRequestStatus;
+  body: string;
+  response: string | null;
+  requester_id: string;
+  handled_by: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -245,6 +289,8 @@ let financeFilter: FinanceEntryType | "all" = "all";
 let assetFilter: AssetStatus | "all" = "all";
 let vendorsCache: Vendor[] = [];
 let taskFilter: BoardTaskStatus | "all" = "all";
+let parkingSpacesCache: ParkingSpace[] = [];
+let residentRequestFilter: ResidentRequestStatus | "all" = "all";
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -358,6 +404,34 @@ const boardTaskPriorityLabels: Record<BoardTaskPriority, string> = {
   normal: "通常",
   high: "高",
   urgent: "緊急",
+};
+
+const parkingKindLabels: Record<ParkingSpaceKind, string> = {
+  car: "駐車場",
+  bicycle: "駐輪場",
+  motorbike: "バイク置場",
+};
+
+const parkingPermitStatusLabels: Record<ParkingPermitStatus, string> = {
+  pending: "申請中",
+  active: "利用中",
+  rejected: "却下",
+  ended: "終了",
+};
+
+const residentRequestCategoryLabels: Record<ResidentRequestCategory, string> = {
+  noise: "騒音",
+  rule: "生活ルール",
+  neighbor: "近隣",
+  common_area: "共用部",
+  other: "その他",
+};
+
+const residentRequestStatusLabels: Record<ResidentRequestStatus, string> = {
+  open: "受付中",
+  in_progress: "対応中",
+  resolved: "完了",
+  closed: "終了",
 };
 
 const roomPalette = ["#176b5b", "#3f6fb5", "#9a5b13", "#7c3aed", "#be3455", "#2f7d32"];
@@ -488,6 +562,8 @@ async function init() {
   if (page === "surveys") await initSurveys();
   if (page === "safety") await initSafety();
   if (page === "tasks") await initTasks();
+  if (page === "parking") await initParking();
+  if (page === "requests") await initResidentRequests();
   if (page === "admin") await initAdmin();
 }
 
@@ -2093,6 +2169,271 @@ async function updateTaskStatus(id: string, status: BoardTaskStatus) {
   await renderTasksPage();
 }
 
+async function initParking() {
+  qs("[data-parking-space-form]")?.classList.toggle("hidden", !canManage());
+  await renderParkingPage();
+
+  qs<HTMLFormElement>("[data-parking-space-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("parking_spaces").insert({
+      code: String(form.get("code")),
+      kind: String(form.get("kind")),
+      location: String(form.get("location") || "") || null,
+      monthly_fee: form.get("monthly_fee") ? Number(form.get("monthly_fee")) : null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-parking-space-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-parking-space-status]", "区画を登録しました。");
+    await renderParkingPage();
+  });
+
+  qs<HTMLFormElement>("[data-parking-permit-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("parking_permits").insert({
+      space_id: String(form.get("space_id")),
+      user_id: currentProfile!.id,
+      vehicle_label: String(form.get("vehicle_label")),
+      start_date: String(form.get("start_date")),
+      end_date: String(form.get("end_date") || "") || null,
+      status: "pending",
+    });
+    if (error) {
+      setStatus("[data-parking-permit-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-parking-permit-status]", "利用申請を送信しました。");
+    await renderParkingPage();
+  });
+}
+
+async function renderParkingPage() {
+  const [{ data: spaces }, { data: permits }] = await Promise.all([
+    supabase!.from("parking_spaces").select("*").order("kind").order("code"),
+    supabase!.from("parking_permits").select("*, parking_spaces(code, kind, location)").order("created_at", { ascending: false }),
+  ]);
+  parkingSpacesCache = (spaces ?? []) as ParkingSpace[];
+  const parkingPermits = (permits ?? []) as ParkingPermit[];
+  const availableSpaces = parkingSpacesCache.filter((space) => space.is_active && space.is_available);
+  setText("[data-metric='parking-available']", String(availableSpaces.length));
+  setText("[data-metric='parking-active']", String(parkingSpacesCache.filter((space) => space.is_active && !space.is_available).length));
+  setText("[data-metric='parking-pending']", String(parkingPermits.filter((permit) => permit.status === "pending").length));
+  renderParkingSpaceSelect(availableSpaces);
+  renderParkingSpaces(parkingSpacesCache);
+  renderParkingPermits(parkingPermits);
+}
+
+function renderParkingSpaceSelect(spaces: ParkingSpace[]) {
+  const select = qs<HTMLSelectElement>("[data-parking-space-select]");
+  if (!select) return;
+  const submit = qs<HTMLButtonElement>("[data-parking-permit-form] button[type='submit']");
+  select.disabled = spaces.length === 0;
+  if (submit) submit.disabled = spaces.length === 0;
+  select.innerHTML = spaces.length
+    ? spaces.map((space) => `<option value="${space.id}">${parkingKindLabels[space.kind]} ${escapeHtml(space.code)}</option>`).join("")
+    : `<option value="">空き区画はありません</option>`;
+}
+
+function renderParkingSpaces(spaces: ParkingSpace[]) {
+  const container = qs("[data-parking-space-list]");
+  if (!container) return;
+  if (!spaces.length) {
+    container.innerHTML = `<p class="meta">区画はありません。</p>`;
+    return;
+  }
+  container.innerHTML = spaces
+    .map(
+      (space) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${parkingKindLabels[space.kind]} ${escapeHtml(space.code)}</strong>
+              <p class="meta">${escapeHtml(space.location ?? "-")} / 月額 ${space.monthly_fee == null ? "-" : formatCurrency(space.monthly_fee)}</p>
+            </div>
+            <span class="badge ${space.is_available ? "success" : "warning"}">${space.is_available ? "空き" : "利用中"}</span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderParkingPermits(permits: ParkingPermit[]) {
+  const container = qs("[data-parking-permit-list]");
+  if (!container) return;
+  if (!permits.length) {
+    container.innerHTML = `<p class="meta">利用申請はありません。</p>`;
+    return;
+  }
+  container.innerHTML = permits
+    .map(
+      (permit) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${parkingKindLabels[permit.parking_spaces?.kind ?? "car"]} ${escapeHtml(permit.parking_spaces?.code ?? "-")}</strong>
+              <p class="meta">${escapeHtml(permit.vehicle_label)} / ${escapeHtml(permit.start_date)}${permit.end_date ? ` - ${escapeHtml(permit.end_date)}` : ""}</p>
+            </div>
+            ${parkingPermitStatusBadge(permit.status)}
+          </div>
+          ${
+            canManage() && permit.status === "pending"
+              ? `<div class="toolbar">
+                  <button class="button" type="button" data-parking-approve="${permit.id}">承認</button>
+                  <button class="button danger" type="button" data-parking-reject="${permit.id}">却下</button>
+                </div>`
+              : canManage() && permit.status === "active"
+                ? `<div class="toolbar"><button class="button secondary" type="button" data-parking-end="${permit.id}">終了</button></div>`
+                : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-parking-approve]").forEach((button) => {
+    button.addEventListener("click", () => updateParkingPermitStatus(button.dataset.parkingApprove!, "active"));
+  });
+  qsa<HTMLButtonElement>("[data-parking-reject]").forEach((button) => {
+    button.addEventListener("click", () => updateParkingPermitStatus(button.dataset.parkingReject!, "rejected"));
+  });
+  qsa<HTMLButtonElement>("[data-parking-end]").forEach((button) => {
+    button.addEventListener("click", () => updateParkingPermitStatus(button.dataset.parkingEnd!, "ended"));
+  });
+}
+
+async function updateParkingPermitStatus(id: string, status: ParkingPermitStatus) {
+  const { data: permit, error: permitError } = await supabase!.from("parking_permits").select("space_id").eq("id", id).single();
+  if (permitError || !permit) {
+    alert(permitError?.message ?? "申請を確認できませんでした。");
+    return;
+  }
+  const patch: Record<string, string | null> = { status };
+  if (status === "active") {
+    patch.approved_by = currentProfile!.id;
+    patch.approved_at = new Date().toISOString();
+  }
+  const { error } = await supabase!.from("parking_permits").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  const { data: activePermits } = await supabase!.from("parking_permits").select("id").eq("space_id", permit.space_id).eq("status", "active").limit(1);
+  await supabase!.from("parking_spaces").update({ is_available: !(activePermits ?? []).length }).eq("id", permit.space_id);
+  await renderParkingPage();
+}
+
+async function initResidentRequests() {
+  await renderResidentRequestsPage();
+
+  qsa<HTMLButtonElement>("[data-request-filter]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      residentRequestFilter = (button.dataset.requestFilter as ResidentRequestStatus | "all") ?? "all";
+      qsa<HTMLButtonElement>("[data-request-filter]").forEach((item) => item.classList.toggle("active", item === button));
+      await renderResidentRequestsPage();
+    });
+  });
+
+  qs<HTMLFormElement>("[data-resident-request-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("resident_requests").insert({
+      title: String(form.get("title")),
+      category: String(form.get("category")),
+      visibility: String(form.get("visibility")),
+      body: String(form.get("body")),
+      requester_id: currentProfile!.id,
+      status: "open",
+    });
+    if (error) {
+      setStatus("[data-resident-request-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-resident-request-status]", "相談を送信しました。");
+    await renderResidentRequestsPage();
+  });
+}
+
+async function renderResidentRequestsPage() {
+  let query = supabase!.from("resident_requests").select("*").order("updated_at", { ascending: false });
+  if (residentRequestFilter !== "all") query = query.eq("status", residentRequestFilter);
+  const { data } = await query;
+  const requests = (data ?? []) as ResidentRequest[];
+  setText("[data-metric='request-open']", String(requests.filter((request) => request.status === "open").length));
+  setText("[data-metric='request-progress']", String(requests.filter((request) => request.status === "in_progress").length));
+  setText("[data-metric='request-done']", String(requests.filter((request) => request.status === "resolved" || request.status === "closed").length));
+  renderResidentRequestList(requests);
+}
+
+function renderResidentRequestList(requests: ResidentRequest[]) {
+  const container = qs("[data-resident-request-list]");
+  if (!container) return;
+  if (!requests.length) {
+    container.innerHTML = `<p class="meta">相談・苦情はありません。</p>`;
+    return;
+  }
+  container.innerHTML = requests
+    .map(
+      (request) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(request.title)}</strong>
+              <p class="meta">${residentRequestCategoryLabels[request.category]} / ${formatDateTime(request.updated_at)}</p>
+            </div>
+            ${residentRequestStatusBadge(request.status)}
+          </div>
+          <p>${escapeHtml(request.body)}</p>
+          ${request.response ? `<p class="meta">回答: ${escapeHtml(request.response)}</p>` : ""}
+          ${
+            canManage()
+              ? `<div class="toolbar">
+                  <button class="button secondary" type="button" data-request-progress="${request.id}">対応中</button>
+                  <button class="button" type="button" data-request-resolve="${request.id}">完了</button>
+                  <button class="button danger" type="button" data-request-close="${request.id}">終了</button>
+                </div>`
+              : request.requester_id === currentProfile?.id && request.status === "open"
+                ? `<div class="toolbar"><button class="button secondary" type="button" data-request-close="${request.id}">取り下げ</button></div>`
+                : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-request-progress]").forEach((button) => {
+    button.addEventListener("click", () => updateResidentRequestStatus(button.dataset.requestProgress!, "in_progress"));
+  });
+  qsa<HTMLButtonElement>("[data-request-resolve]").forEach((button) => {
+    button.addEventListener("click", () => updateResidentRequestStatus(button.dataset.requestResolve!, "resolved"));
+  });
+  qsa<HTMLButtonElement>("[data-request-close]").forEach((button) => {
+    button.addEventListener("click", () => updateResidentRequestStatus(button.dataset.requestClose!, "closed"));
+  });
+}
+
+async function updateResidentRequestStatus(id: string, status: ResidentRequestStatus) {
+  const patch: Record<string, string | null> = { status };
+  if (canManage()) {
+    patch.handled_by = currentProfile!.id;
+    patch.response = status === "in_progress" ? "対応を開始しました。" : status === "resolved" ? "対応を完了しました。" : "受付を終了しました。";
+  }
+  if (status === "resolved") patch.resolved_at = new Date().toISOString();
+  const { error } = await supabase!.from("resident_requests").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderResidentRequestsPage();
+}
+
 async function initAdmin() {
   if (!isAdmin()) {
     qs(".main")!.innerHTML = `<section class="panel"><h1>アクセス権限がありません</h1><p class="meta">管理者のみ利用できます。</p></section>`;
@@ -2262,6 +2603,16 @@ function safetyEventStatusBadge(status: SafetyEventStatus) {
 function boardTaskStatusBadge(status: BoardTaskStatus) {
   const className = status === "done" ? "success" : status === "open" || status === "in_progress" ? "warning" : "danger";
   return `<span class="badge ${className}">${boardTaskStatusLabels[status]}</span>`;
+}
+
+function parkingPermitStatusBadge(status: ParkingPermitStatus) {
+  const className = status === "active" ? "success" : status === "pending" ? "warning" : "danger";
+  return `<span class="badge ${className}">${parkingPermitStatusLabels[status]}</span>`;
+}
+
+function residentRequestStatusBadge(status: ResidentRequestStatus) {
+  const className = status === "resolved" || status === "closed" ? "success" : "warning";
+  return `<span class="badge ${className}">${residentRequestStatusLabels[status]}</span>`;
 }
 
 void init();

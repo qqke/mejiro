@@ -1,0 +1,96 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Bike, Car, CircleParking, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="駐車駐輪" page="parking">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Parking</p>
+      <h1>駐車・駐輪</h1>
+      <p class="lead">駐車場、駐輪場、バイク置場の区画と利用申請、承認状況を管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="駐車駐輪指標">
+    <div class="panel metric">
+      <span>空き区画</span>
+      <strong data-metric="parking-available">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>利用中</span>
+      <strong data-metric="parking-active">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>申請中</span>
+      <strong data-metric="parking-pending">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-parking-space-form>
+      <h2><Plus size={18} aria-hidden="true" /> 区画を登録</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label for="parking-code">区画番号</label>
+          <input class="input" id="parking-code" name="code" required />
+        </div>
+        <div class="field">
+          <label for="parking-kind">種別</label>
+          <select class="select" id="parking-kind" name="kind">
+            <option value="car">駐車場</option>
+            <option value="bicycle">駐輪場</option>
+            <option value="motorbike">バイク置場</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="parking-location">場所</label>
+          <input class="input" id="parking-location" name="location" />
+        </div>
+        <div class="field">
+          <label for="parking-fee">月額</label>
+          <input class="input" id="parking-fee" name="monthly_fee" type="number" min="0" step="1" />
+        </div>
+      </div>
+      <button class="button" type="submit">登録する</button>
+      <p class="status" data-parking-space-status></p>
+    </form>
+
+    <form class="panel grid" data-parking-permit-form>
+      <h2><CircleParking size={18} aria-hidden="true" /> 利用申請</h2>
+      <div class="field">
+        <label for="parking-space">区画</label>
+        <select class="select" id="parking-space" name="space_id" required data-parking-space-select></select>
+      </div>
+      <div class="field">
+        <label for="parking-vehicle">車両情報</label>
+        <input class="input" id="parking-vehicle" name="vehicle_label" placeholder="車番・自転車色など" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="parking-start">利用開始</label>
+          <input class="input" id="parking-start" name="start_date" type="date" required />
+        </div>
+        <div class="field">
+          <label for="parking-end">利用終了</label>
+          <input class="input" id="parking-end" name="end_date" type="date" />
+        </div>
+      </div>
+      <button class="button" type="submit">申請する</button>
+      <p class="status" data-parking-permit-status></p>
+    </form>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <h2><Car size={18} aria-hidden="true" /> 区画一覧</h2>
+      <div class="list" data-parking-space-list></div>
+    </div>
+    <div class="panel">
+      <h2><Bike size={18} aria-hidden="true" /> 利用申請一覧</h2>
+      <div class="list" data-parking-permit-list></div>
+    </div>
+  </section>
+</AppLayout>

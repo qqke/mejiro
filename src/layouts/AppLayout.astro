@@ -5,12 +5,14 @@ import {
   Boxes,
   Building2,
   CalendarDays,
+  CircleParking,
   ClipboardList,
   ClipboardCheck,
   FileText,
   HandCoins,
   Home,
   LogOut,
+  MessageSquareWarning,
   NotebookTabs,
   Settings,
   ShieldCheck,
@@ -36,6 +38,8 @@ type Props = {
     | "surveys"
     | "safety"
     | "tasks"
+    | "parking"
+    | "requests"
     | "admin";
 };
 
@@ -57,6 +61,8 @@ const navItems = [
   { href: asset("/surveys/"), label: "意見収集", page: "surveys", icon: Vote },
   { href: asset("/safety/"), label: "防災安否", page: "safety", icon: ShieldCheck },
   { href: asset("/tasks/"), label: "理事タスク", page: "tasks", icon: ClipboardCheck },
+  { href: asset("/parking/"), label: "駐車駐輪", page: "parking", icon: CircleParking },
+  { href: asset("/requests/"), label: "相談苦情", page: "requests", icon: MessageSquareWarning },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

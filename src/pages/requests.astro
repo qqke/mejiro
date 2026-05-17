@@ -1,0 +1,76 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { MessageSquareWarning, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="相談苦情" page="requests">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Requests</p>
+      <h1>相談・苦情</h1>
+      <p class="lead">生活ルール、騒音、共用部利用、近隣トラブルなどの相談・苦情を受付し、対応履歴を残します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="相談苦情指標">
+    <div class="panel metric">
+      <span>受付中</span>
+      <strong data-metric="request-open">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>対応中</span>
+      <strong data-metric="request-progress">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>完了</span>
+      <strong data-metric="request-done">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid" data-resident-request-form>
+      <h2><Plus size={18} aria-hidden="true" /> 相談を送信</h2>
+      <div class="field">
+        <label for="request-title">件名</label>
+        <input class="input" id="request-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="request-category">分類</label>
+          <select class="select" id="request-category" name="category">
+            <option value="noise">騒音</option>
+            <option value="rule">生活ルール</option>
+            <option value="neighbor">近隣</option>
+            <option value="common_area">共用部</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="request-visibility">公開範囲</label>
+          <select class="select" id="request-visibility" name="visibility">
+            <option value="private">理事・管理者のみ</option>
+            <option value="board">理事会共有</option>
+            <option value="public">住民共有</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="request-body">内容</label>
+        <textarea class="textarea" id="request-body" name="body" required></textarea>
+      </div>
+      <button class="button" type="submit">送信する</button>
+      <p class="status" data-resident-request-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><MessageSquareWarning size={18} aria-hidden="true" /> 受付一覧</h2>
+      <div class="request-filters segmented" aria-label="相談フィルター">
+        <button class="segment active" type="button" data-request-filter="all">全体</button>
+        <button class="segment" type="button" data-request-filter="open">受付</button>
+        <button class="segment" type="button" data-request-filter="in_progress">対応</button>
+        <button class="segment" type="button" data-request-filter="resolved">完了</button>
+      </div>
+      <div class="list" data-resident-request-list></div>
+    </div>
+  </section>
+</AppLayout>
