@@ -170,6 +170,27 @@ type VendorContract = {
   vendors?: Pick<Vendor, "name"> | null;
 };
 
+type Survey = {
+  id: string;
+  title: string;
+  question: string;
+  options: string[];
+  is_open: boolean;
+  closes_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type SurveyResponse = {
+  id: string;
+  survey_id: string;
+  user_id: string;
+  option_value: string;
+  comment: string | null;
+  created_at: string;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -389,6 +410,8 @@ async function init() {
   if (page === "finance") await initFinance();
   if (page === "assets") await initAssets();
   if (page === "vendors") await initVendors();
+  if (page === "residents") await initResidents();
+  if (page === "surveys") await initSurveys();
   if (page === "admin") await initAdmin();
 }
 
@@ -418,7 +441,7 @@ async function initLogin() {
 async function loadProfile(userId: string, email: string): Promise<Profile> {
   const { data, error } = await supabase!
     .from("profiles")
-    .select("id, display_name, role, building, unit_number")
+    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
     .eq("id", userId)
     .single();
 
@@ -428,7 +451,7 @@ async function loadProfile(userId: string, email: string): Promise<Profile> {
   const { data: inserted } = await supabase!
     .from("profiles")
     .insert({ id: userId, display_name: fallbackName, role: "resident" })
-    .select("id, display_name, role, building, unit_number")
+    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
     .single();
 
   return (inserted as Profile | null) ?? {
@@ -437,6 +460,9 @@ async function loadProfile(userId: string, email: string): Promise<Profile> {
     role: "resident",
     building: null,
     unit_number: null,
+    phone: null,
+    emergency_contact_name: null,
+    emergency_contact_phone: null,
   };
 }
 
@@ -1566,6 +1592,219 @@ function contractStatusFromEndDate(endDate: string): ContractStatus {
   if (end < now) return "expired";
   if (end <= renewalThreshold) return "renewal_due";
   return "active";
+}
+
+async function initResidents() {
+  fillResidentForm();
+  await renderResidentsPage();
+
+  qs<HTMLFormElement>("[data-resident-profile-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { data, error } = await supabase!
+      .from("profiles")
+      .update({
+        display_name: String(form.get("display_name")),
+        phone: String(form.get("phone") || "") || null,
+        building: String(form.get("building") || "") || null,
+        unit_number: String(form.get("unit_number") || "") || null,
+        emergency_contact_name: String(form.get("emergency_contact_name") || "") || null,
+        emergency_contact_phone: String(form.get("emergency_contact_phone") || "") || null,
+      })
+      .eq("id", currentProfile!.id)
+      .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
+      .single();
+
+    if (error) {
+      setStatus("[data-resident-status]", error.message, true);
+      return;
+    }
+
+    currentProfile = data as Profile;
+    setText("[data-user-name]", currentProfile.display_name || "ユーザー");
+    setStatus("[data-resident-status]", "連絡先を更新しました。");
+    await renderResidentsPage();
+  });
+}
+
+function fillResidentForm() {
+  const fields: Record<string, string | null | undefined> = {
+    display_name: currentProfile?.display_name,
+    phone: currentProfile?.phone,
+    building: currentProfile?.building,
+    unit_number: currentProfile?.unit_number,
+    emergency_contact_name: currentProfile?.emergency_contact_name,
+    emergency_contact_phone: currentProfile?.emergency_contact_phone,
+  };
+  Object.entries(fields).forEach(([name, value]) => {
+    const input = qs<HTMLInputElement>(`[data-resident-profile-form] [name="${name}"]`);
+    if (input) input.value = value ?? "";
+  });
+}
+
+async function renderResidentsPage() {
+  const { data } = await supabase!
+    .from("profiles")
+    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
+    .order("building")
+    .order("unit_number");
+  const profiles = (data ?? []) as Profile[];
+  setText("[data-metric='resident-total']", String(profiles.length));
+  setText("[data-metric='resident-contacted']", String(profiles.filter((profile) => profile.phone).length));
+  setText("[data-metric='resident-missing']", String(profiles.filter((profile) => !profile.phone || !profile.building || !profile.unit_number).length));
+  renderResidentList(profiles);
+}
+
+function renderResidentList(profiles: Profile[]) {
+  const container = qs("[data-resident-list]");
+  if (!container) return;
+  if (!profiles.length) {
+    container.innerHTML = `<p class="meta">名簿データはありません。</p>`;
+    return;
+  }
+  container.innerHTML = profiles
+    .map(
+      (profile) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(profile.display_name ?? "ユーザー")}</strong>
+              <p class="meta">${escapeHtml(profile.building ?? "-")} ${escapeHtml(profile.unit_number ?? "-")} / ${roleLabels[profile.role]}</p>
+            </div>
+            <span class="badge ${profile.phone ? "success" : "warning"}">${profile.phone ? "連絡可" : "要確認"}</span>
+          </div>
+          <p class="meta">電話 ${escapeHtml(profile.phone ?? "-")} / 緊急 ${escapeHtml(profile.emergency_contact_name ?? "-")} ${escapeHtml(profile.emergency_contact_phone ?? "")}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+async function initSurveys() {
+  qs("[data-survey-form]")?.classList.toggle("hidden", !canManage());
+  await renderSurveysPage();
+
+  qs<HTMLFormElement>("[data-survey-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const options = String(form.get("options"))
+      .split(",")
+      .map((option) => option.trim())
+      .filter(Boolean);
+
+    if (options.length < 2) {
+      setStatus("[data-survey-status]", "選択肢は2つ以上入力してください。", true);
+      return;
+    }
+
+    const closesAt = String(form.get("closes_at") || "");
+    const { error } = await supabase!.from("surveys").insert({
+      title: String(form.get("title")),
+      question: String(form.get("question")),
+      options,
+      closes_at: closesAt ? new Date(closesAt).toISOString() : null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-survey-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-survey-status]", "意見募集を作成しました。");
+    await renderSurveysPage();
+  });
+}
+
+async function renderSurveysPage() {
+  const [{ data: surveys }, { data: responses }] = await Promise.all([
+    supabase!.from("surveys").select("*").order("created_at", { ascending: false }),
+    supabase!.from("survey_responses").select("*").order("created_at", { ascending: false }),
+  ]);
+  const surveyItems = (surveys ?? []) as Survey[];
+  const responseItems = (responses ?? []) as SurveyResponse[];
+  const myResponses = responseItems.filter((response) => response.user_id === currentProfile!.id);
+  setText("[data-metric='survey-open']", String(surveyItems.filter(isSurveyOpen).length));
+  setText("[data-metric='survey-answered']", String(myResponses.length));
+  setText("[data-metric='survey-closed']", String(surveyItems.filter((survey) => !isSurveyOpen(survey)).length));
+  renderSurveyList(surveyItems, responseItems);
+}
+
+function renderSurveyList(surveys: Survey[], responses: SurveyResponse[]) {
+  const container = qs("[data-survey-list]");
+  if (!container) return;
+  if (!surveys.length) {
+    container.innerHTML = `<p class="meta">意見募集はありません。</p>`;
+    return;
+  }
+  container.innerHTML = surveys
+    .map((survey) => {
+      const surveyResponses = responses.filter((response) => response.survey_id === survey.id);
+      const myResponse = surveyResponses.find((response) => response.user_id === currentProfile!.id);
+      const open = isSurveyOpen(survey);
+      return `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(survey.title)}</strong>
+              <p class="meta">${survey.closes_at ? `締切 ${formatDateTime(survey.closes_at)} / ` : ""}${surveyResponses.length} 件回答</p>
+            </div>
+            <span class="badge ${open ? "success" : "danger"}">${open ? "受付中" : "締切"}</span>
+          </div>
+          <p>${escapeHtml(survey.question)}</p>
+          <div class="survey-options">
+            ${survey.options
+              .map((option) => {
+                const count = surveyResponses.filter((response) => response.option_value === option).length;
+                return `
+                  <button class="button ${myResponse?.option_value === option ? "" : "secondary"}" type="button" data-survey-answer="${survey.id}" data-survey-option="${escapeHtml(option)}" ${open ? "" : "disabled"}>
+                    ${escapeHtml(option)}${canManage() ? ` (${count})` : ""}
+                  </button>
+                `;
+              })
+              .join("")}
+          </div>
+          ${myResponse ? `<p class="meta">あなたの回答: ${escapeHtml(myResponse.option_value)}</p>` : ""}
+          ${canManage() && open ? `<button class="button danger" type="button" data-survey-close="${survey.id}">締切る</button>` : ""}
+        </article>
+      `;
+    })
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-survey-answer]").forEach((button) => {
+    button.addEventListener("click", () => answerSurvey(button.dataset.surveyAnswer!, button.dataset.surveyOption!));
+  });
+  qsa<HTMLButtonElement>("[data-survey-close]").forEach((button) => {
+    button.addEventListener("click", () => closeSurvey(button.dataset.surveyClose!));
+  });
+}
+
+async function answerSurvey(surveyId: string, optionValue: string) {
+  const { error } = await supabase!.from("survey_responses").upsert(
+    {
+      survey_id: surveyId,
+      user_id: currentProfile!.id,
+      option_value: optionValue,
+    },
+    { onConflict: "survey_id,user_id" },
+  );
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderSurveysPage();
+}
+
+async function closeSurvey(id: string) {
+  const { error } = await supabase!.from("surveys").update({ is_open: false }).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderSurveysPage();
+}
+
+function isSurveyOpen(survey: Survey) {
+  return survey.is_open && (!survey.closes_at || new Date(survey.closes_at) > new Date());
 }
 
 async function initAdmin() {

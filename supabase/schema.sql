@@ -26,6 +26,9 @@ create table public.profiles (
   role public.app_role not null default 'resident',
   building text,
   unit_number text,
+  phone text,
+  emergency_contact_name text,
+  emergency_contact_phone text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -190,6 +193,29 @@ create table public.vendor_contracts (
   constraint vendor_contract_time_order check (end_date >= start_date)
 );
 
+create table public.surveys (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  question text not null,
+  options text[] not null,
+  is_open boolean not null default true,
+  closes_at timestamptz,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.survey_responses (
+  id uuid primary key default gen_random_uuid(),
+  survey_id uuid not null references public.surveys(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  option_value text not null,
+  comment text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (survey_id, user_id)
+);
+
 create or replace function app_private.has_role(required_roles public.app_role[])
 returns boolean
 language sql
@@ -265,6 +291,14 @@ create trigger vendor_contracts_set_updated_at
 before update on public.vendor_contracts
 for each row execute function public.set_updated_at();
 
+create trigger surveys_set_updated_at
+before update on public.surveys
+for each row execute function public.set_updated_at();
+
+create trigger survey_responses_set_updated_at
+before update on public.survey_responses
+for each row execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.room_bookings enable row level security;
@@ -279,6 +313,8 @@ alter table public.finance_entries enable row level security;
 alter table public.asset_items enable row level security;
 alter table public.vendors enable row level security;
 alter table public.vendor_contracts enable row level security;
+alter table public.surveys enable row level security;
+alter table public.survey_responses enable row level security;
 
 create policy "profiles_select_own_or_manager"
 on public.profiles for select
@@ -293,8 +329,11 @@ with check (id = auth.uid() and role = 'resident');
 create policy "profiles_admin_update"
 on public.profiles for update
 to authenticated
-using (app_private.has_role(array['admin']::public.app_role[]))
-with check (app_private.has_role(array['admin']::public.app_role[]));
+using (id = auth.uid() or app_private.has_role(array['admin']::public.app_role[]))
+with check (
+  (id = auth.uid() and role = (select role from public.profiles where id = auth.uid()))
+  or app_private.has_role(array['admin']::public.app_role[])
+);
 
 create policy "rooms_select_authenticated"
 on public.rooms for select
@@ -499,8 +538,58 @@ to authenticated
 using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
 with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
 
+create policy "surveys_select_authenticated"
+on public.surveys for select
+to authenticated
+using (true);
+
+create policy "surveys_manager_insert"
+on public.surveys for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "surveys_manager_update"
+on public.surveys for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "survey_responses_select_own_or_manager"
+on public.survey_responses for select
+to authenticated
+using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "survey_responses_insert_own"
+on public.survey_responses for insert
+to authenticated
+with check (user_id = auth.uid());
+
+create policy "survey_responses_update_own"
+on public.survey_responses for update
+to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid());
+
 insert into public.rooms (name, capacity, notes)
 values
   ('集会室 A', 24, '理事会・小規模会議向け'),
   ('集会室 B', 40, '総会準備・住民説明会向け')
 on conflict do nothing;
+
+grant usage on schema public to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update on public.rooms to authenticated;
+grant select, insert, update on public.room_bookings to authenticated;
+grant select, insert, update on public.notices to authenticated;
+grant select, insert, update on public.notice_reads to authenticated;
+grant select, insert, update, delete on public.events to authenticated;
+grant select, insert, update on public.management_documents to authenticated;
+grant select, insert on public.document_approvals to authenticated;
+grant select, insert on public.document_seals to authenticated;
+grant select, insert, update on public.maintenance_requests to authenticated;
+grant select, insert, update on public.finance_entries to authenticated;
+grant select, insert, update on public.asset_items to authenticated;
+grant select, insert, update on public.vendors to authenticated;
+grant select, insert, update on public.vendor_contracts to authenticated;
+grant select, insert, update on public.surveys to authenticated;
+grant select, insert, update on public.survey_responses to authenticated;

@@ -10,15 +10,29 @@ import {
   HandCoins,
   Home,
   LogOut,
+  NotebookTabs,
   Settings,
   Store,
+  Vote,
   Wrench,
 } from "@lucide/astro";
 
 type Props = {
   title: string;
   description?: string;
-  page: "home" | "rooms" | "notices" | "events" | "documents" | "maintenance" | "finance" | "assets" | "vendors" | "admin";
+  page:
+    | "home"
+    | "rooms"
+    | "notices"
+    | "events"
+    | "documents"
+    | "maintenance"
+    | "finance"
+    | "assets"
+    | "vendors"
+    | "residents"
+    | "surveys"
+    | "admin";
 };
 
 const { title, description = "団地管理組合電子化システム", page } = Astro.props;
@@ -35,6 +49,8 @@ const navItems = [
   { href: asset("/finance/"), label: "収支台帳", page: "finance", icon: HandCoins },
   { href: asset("/assets/"), label: "資産台帳", page: "assets", icon: Boxes },
   { href: asset("/vendors/"), label: "業者契約", page: "vendors", icon: Store },
+  { href: asset("/residents/"), label: "住民名簿", page: "residents", icon: NotebookTabs },
+  { href: asset("/surveys/"), label: "意見収集", page: "surveys", icon: Vote },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

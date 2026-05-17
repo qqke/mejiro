@@ -107,3 +107,7 @@ on public.finance_entries for update
 to authenticated
 using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
 with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+grant usage on schema public to authenticated;
+grant select, insert, update on public.maintenance_requests to authenticated;
+grant select, insert, update on public.finance_entries to authenticated;

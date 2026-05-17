@@ -104,3 +104,8 @@ create policy "document_seals_manager_insert"
 on public.document_seals for insert
 to authenticated
 with check (sealed_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+grant usage on schema public to authenticated;
+grant select, insert, update on public.management_documents to authenticated;
+grant select, insert on public.document_approvals to authenticated;
+grant select, insert on public.document_seals to authenticated;

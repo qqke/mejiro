@@ -23,4 +23,7 @@ export type Profile = {
   role: Role;
   building: string | null;
   unit_number: string | null;
+  phone: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
 };

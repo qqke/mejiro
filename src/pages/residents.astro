@@ -1,0 +1,72 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { NotebookTabs } from "@lucide/astro";
+---
+
+<AppLayout title="住民名簿" page="residents">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Residents</p>
+      <h1>住民名簿</h1>
+      <p class="lead">棟、部屋番号、連絡先、緊急連絡先を管理し、理事・管理者が連絡体制を確認できます。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="住民指標">
+    <div class="panel metric">
+      <span>登録住民</span>
+      <strong data-metric="resident-total">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>連絡先あり</span>
+      <strong data-metric="resident-contacted">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>要確認</span>
+      <strong data-metric="resident-missing">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid" data-resident-profile-form>
+      <h2>自分の連絡先</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label for="resident-display-name">氏名</label>
+          <input class="input" id="resident-display-name" name="display_name" required />
+        </div>
+        <div class="field">
+          <label for="resident-phone">電話</label>
+          <input class="input" id="resident-phone" name="phone" />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="resident-building">棟</label>
+          <input class="input" id="resident-building" name="building" />
+        </div>
+        <div class="field">
+          <label for="resident-unit">部屋番号</label>
+          <input class="input" id="resident-unit" name="unit_number" />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="resident-emergency-name">緊急連絡先</label>
+          <input class="input" id="resident-emergency-name" name="emergency_contact_name" />
+        </div>
+        <div class="field">
+          <label for="resident-emergency-phone">緊急電話</label>
+          <input class="input" id="resident-emergency-phone" name="emergency_contact_phone" />
+        </div>
+      </div>
+      <button class="button" type="submit">更新する</button>
+      <p class="status" data-resident-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><NotebookTabs size={18} aria-hidden="true" /> 名簿</h2>
+      <div class="list" data-resident-list></div>
+    </div>
+  </section>
+</AppLayout>

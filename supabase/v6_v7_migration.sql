@@ -139,3 +139,8 @@ on public.vendor_contracts for update
 to authenticated
 using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
 with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+grant usage on schema public to authenticated;
+grant select, insert, update on public.asset_items to authenticated;
+grant select, insert, update on public.vendors to authenticated;
+grant select, insert, update on public.vendor_contracts to authenticated;

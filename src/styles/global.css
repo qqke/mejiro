@@ -487,6 +487,12 @@ h3 {
   color: var(--danger);
 }
 
+.survey-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .seal-mark {
   display: grid;
   width: 54px;
