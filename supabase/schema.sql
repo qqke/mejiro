@@ -27,6 +27,10 @@ create type public.parking_permit_status as enum ('pending', 'active', 'rejected
 create type public.resident_request_category as enum ('noise', 'rule', 'neighbor', 'common_area', 'other');
 create type public.resident_request_status as enum ('open', 'in_progress', 'resolved', 'closed');
 create type public.resident_request_visibility as enum ('private', 'board', 'public');
+create type public.circular_kind as enum ('notice', 'minutes', 'event', 'rule', 'other');
+create type public.circular_status as enum ('published', 'archived');
+create type public.lending_item_kind as enum ('key', 'equipment', 'document', 'other');
+create type public.lending_request_status as enum ('pending', 'checked_out', 'returned', 'rejected', 'lost');
 
 create schema if not exists app_private;
 
@@ -312,6 +316,55 @@ create table public.resident_requests (
   updated_at timestamptz not null default now()
 );
 
+create table public.circulars (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  kind public.circular_kind not null default 'notice',
+  target_role public.notice_target_role not null default 'all',
+  status public.circular_status not null default 'published',
+  body text not null,
+  due_date date,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.circular_acknowledgements (
+  id uuid primary key default gen_random_uuid(),
+  circular_id uuid not null references public.circulars(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  note text,
+  created_at timestamptz not null default now(),
+  unique (circular_id, user_id)
+);
+
+create table public.lending_items (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  kind public.lending_item_kind not null default 'other',
+  location text,
+  note text,
+  is_active boolean not null default true,
+  is_available boolean not null default true,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.lending_requests (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null references public.lending_items(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  purpose text not null,
+  status public.lending_request_status not null default 'pending',
+  checkout_at timestamptz,
+  due_at timestamptz,
+  returned_at timestamptz,
+  approved_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create or replace function app_private.has_role(required_roles public.app_role[])
 returns boolean
 language sql
@@ -419,6 +472,18 @@ create trigger resident_requests_set_updated_at
 before update on public.resident_requests
 for each row execute function public.set_updated_at();
 
+create trigger circulars_set_updated_at
+before update on public.circulars
+for each row execute function public.set_updated_at();
+
+create trigger lending_items_set_updated_at
+before update on public.lending_items
+for each row execute function public.set_updated_at();
+
+create trigger lending_requests_set_updated_at
+before update on public.lending_requests
+for each row execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.room_bookings enable row level security;
@@ -441,6 +506,10 @@ alter table public.board_tasks enable row level security;
 alter table public.parking_spaces enable row level security;
 alter table public.parking_permits enable row level security;
 alter table public.resident_requests enable row level security;
+alter table public.circulars enable row level security;
+alter table public.circular_acknowledgements enable row level security;
+alter table public.lending_items enable row level security;
+alter table public.lending_requests enable row level security;
 
 create policy "profiles_select_own_or_manager"
 on public.profiles for select
@@ -800,6 +869,101 @@ with check (
   or (requester_id = auth.uid() and status in ('open', 'closed'))
 );
 
+create policy "circulars_select_target_or_manager"
+on public.circulars for select
+to authenticated
+using (
+  app_private.has_role(array['board_member', 'admin']::public.app_role[])
+  or (
+    status = 'published'
+    and (
+      target_role = 'all'
+      or exists (
+        select 1 from public.profiles
+        where profiles.id = auth.uid()
+          and profiles.role::text = circulars.target_role::text
+      )
+    )
+  )
+);
+
+create policy "circulars_manager_insert"
+on public.circulars for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "circulars_manager_update"
+on public.circulars for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "circular_acknowledgements_select_own_or_manager"
+on public.circular_acknowledgements for select
+to authenticated
+using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "circular_acknowledgements_insert_own"
+on public.circular_acknowledgements for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.circulars
+    where circulars.id = circular_acknowledgements.circular_id
+      and circulars.status = 'published'
+      and (
+        circulars.target_role = 'all'
+        or exists (
+          select 1 from public.profiles
+          where profiles.id = auth.uid()
+            and profiles.role::text = circulars.target_role::text
+        )
+      )
+  )
+);
+
+create policy "lending_items_select_active_or_manager"
+on public.lending_items for select
+to authenticated
+using (is_active = true or app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "lending_items_manager_insert"
+on public.lending_items for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "lending_items_manager_update"
+on public.lending_items for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "lending_requests_select_own_or_manager"
+on public.lending_requests for select
+to authenticated
+using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "lending_requests_insert_own"
+on public.lending_requests for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and status = 'pending'
+  and exists (
+    select 1 from public.lending_items
+    where lending_items.id = lending_requests.item_id
+      and lending_items.is_active = true
+      and lending_items.is_available = true
+  )
+);
+
+create policy "lending_requests_manager_update"
+on public.lending_requests for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
 insert into public.rooms (name, capacity, notes)
 values
   ('集会室 A', 24, '理事会・小規模会議向け'),
@@ -829,3 +993,7 @@ grant select, insert, update on public.board_tasks to authenticated;
 grant select, insert, update on public.parking_spaces to authenticated;
 grant select, insert, update on public.parking_permits to authenticated;
 grant select, insert, update on public.resident_requests to authenticated;
+grant select, insert, update on public.circulars to authenticated;
+grant select, insert on public.circular_acknowledgements to authenticated;
+grant select, insert, update on public.lending_items to authenticated;
+grant select, insert, update on public.lending_requests to authenticated;

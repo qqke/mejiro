@@ -13,6 +13,8 @@ import {
   Home,
   LogOut,
   MessageSquareWarning,
+  KeyRound,
+  Newspaper,
   NotebookTabs,
   Settings,
   ShieldCheck,
@@ -40,6 +42,8 @@ type Props = {
     | "tasks"
     | "parking"
     | "requests"
+    | "circulars"
+    | "lending"
     | "admin";
 };
 
@@ -63,6 +67,8 @@ const navItems = [
   { href: asset("/tasks/"), label: "理事タスク", page: "tasks", icon: ClipboardCheck },
   { href: asset("/parking/"), label: "駐車駐輪", page: "parking", icon: CircleParking },
   { href: asset("/requests/"), label: "相談苦情", page: "requests", icon: MessageSquareWarning },
+  { href: asset("/circulars/"), label: "回覧配布", page: "circulars", icon: Newspaper },
+  { href: asset("/lending/"), label: "鍵貸出", page: "lending", icon: KeyRound },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

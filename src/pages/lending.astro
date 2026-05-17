@@ -1,0 +1,89 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { KeyRound, PackageCheck, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="鍵貸出" page="lending">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Lending</p>
+      <h1>鍵・備品貸出</h1>
+      <p class="lead">集会室の鍵、清掃用具、防災備品、書類などの貸出申請、返却期限、返却状況を管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="鍵備品貸出指標">
+    <div class="panel metric">
+      <span>貸出可能</span>
+      <strong data-metric="lending-available">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>申請中</span>
+      <strong data-metric="lending-pending">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>貸出中</span>
+      <strong data-metric="lending-checked-out">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-lending-item-form>
+      <h2><Plus size={18} aria-hidden="true" /> 貸出品を登録</h2>
+      <div class="form-grid">
+        <div class="field">
+          <label for="lending-item-name">名称</label>
+          <input class="input" id="lending-item-name" name="name" required />
+        </div>
+        <div class="field">
+          <label for="lending-item-kind">種別</label>
+          <select class="select" id="lending-item-kind" name="kind">
+            <option value="key">鍵</option>
+            <option value="equipment">備品</option>
+            <option value="document">書類</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="lending-item-location">保管場所</label>
+        <input class="input" id="lending-item-location" name="location" />
+      </div>
+      <div class="field">
+        <label for="lending-item-note">メモ</label>
+        <textarea class="textarea" id="lending-item-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">登録する</button>
+      <p class="status" data-lending-item-status></p>
+    </form>
+
+    <form class="panel grid" data-lending-request-form>
+      <h2><KeyRound size={18} aria-hidden="true" /> 貸出申請</h2>
+      <div class="field">
+        <label for="lending-item">貸出品</label>
+        <select class="select" id="lending-item" name="item_id" required data-lending-item-select></select>
+      </div>
+      <div class="field">
+        <label for="lending-purpose">用途</label>
+        <textarea class="textarea" id="lending-purpose" name="purpose" required></textarea>
+      </div>
+      <div class="field">
+        <label for="lending-due">返却予定</label>
+        <input class="input" id="lending-due" name="due_at" type="datetime-local" />
+      </div>
+      <button class="button" type="submit">申請する</button>
+      <p class="status" data-lending-request-status></p>
+    </form>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <h2><PackageCheck size={18} aria-hidden="true" /> 貸出品一覧</h2>
+      <div class="list" data-lending-item-list></div>
+    </div>
+    <div class="panel">
+      <h2><KeyRound size={18} aria-hidden="true" /> 申請・貸出一覧</h2>
+      <div class="list" data-lending-request-list></div>
+    </div>
+  </section>
+</AppLayout>

@@ -237,6 +237,10 @@ type ParkingPermitStatus = "pending" | "active" | "rejected" | "ended";
 type ResidentRequestCategory = "noise" | "rule" | "neighbor" | "common_area" | "other";
 type ResidentRequestStatus = "open" | "in_progress" | "resolved" | "closed";
 type ResidentRequestVisibility = "private" | "board" | "public";
+type CircularKind = "notice" | "minutes" | "event" | "rule" | "other";
+type CircularStatus = "published" | "archived";
+type LendingItemKind = "key" | "equipment" | "document" | "other";
+type LendingRequestStatus = "pending" | "checked_out" | "returned" | "rejected" | "lost";
 
 type ParkingSpace = {
   id: string;
@@ -276,6 +280,52 @@ type ResidentRequest = {
   updated_at: string;
 };
 
+type Circular = {
+  id: string;
+  title: string;
+  kind: CircularKind;
+  target_role: Role | "all";
+  status: CircularStatus;
+  body: string;
+  due_date: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type CircularAcknowledgement = {
+  id: string;
+  circular_id: string;
+  user_id: string;
+  note: string | null;
+  created_at: string;
+  circulars?: Pick<Circular, "title" | "kind"> | null;
+};
+
+type LendingItem = {
+  id: string;
+  name: string;
+  kind: LendingItemKind;
+  location: string | null;
+  note: string | null;
+  is_active: boolean;
+  is_available: boolean;
+};
+
+type LendingRequest = {
+  id: string;
+  item_id: string;
+  user_id: string;
+  purpose: string;
+  status: LendingRequestStatus;
+  checkout_at: string | null;
+  due_at: string | null;
+  returned_at: string | null;
+  approved_by: string | null;
+  created_at: string;
+  lending_items?: Pick<LendingItem, "name" | "kind" | "location"> | null;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -291,6 +341,7 @@ let vendorsCache: Vendor[] = [];
 let taskFilter: BoardTaskStatus | "all" = "all";
 let parkingSpacesCache: ParkingSpace[] = [];
 let residentRequestFilter: ResidentRequestStatus | "all" = "all";
+let lendingItemsCache: LendingItem[] = [];
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -434,6 +485,34 @@ const residentRequestStatusLabels: Record<ResidentRequestStatus, string> = {
   closed: "終了",
 };
 
+const circularKindLabels: Record<CircularKind, string> = {
+  notice: "お知らせ",
+  minutes: "議事録",
+  event: "行事",
+  rule: "規約",
+  other: "その他",
+};
+
+const circularStatusLabels: Record<CircularStatus, string> = {
+  published: "公開中",
+  archived: "保管済み",
+};
+
+const lendingKindLabels: Record<LendingItemKind, string> = {
+  key: "鍵",
+  equipment: "備品",
+  document: "書類",
+  other: "その他",
+};
+
+const lendingRequestStatusLabels: Record<LendingRequestStatus, string> = {
+  pending: "申請中",
+  checked_out: "貸出中",
+  returned: "返却済み",
+  rejected: "却下",
+  lost: "紛失",
+};
+
 const roomPalette = ["#176b5b", "#3f6fb5", "#9a5b13", "#7c3aed", "#be3455", "#2f7d32"];
 
 const statusColors: Record<BookingStatus, { background: string; border: string; text: string }> = {
@@ -564,6 +643,8 @@ async function init() {
   if (page === "tasks") await initTasks();
   if (page === "parking") await initParking();
   if (page === "requests") await initResidentRequests();
+  if (page === "circulars") await initCirculars();
+  if (page === "lending") await initLending();
   if (page === "admin") await initAdmin();
 }
 
@@ -2434,6 +2515,301 @@ async function updateResidentRequestStatus(id: string, status: ResidentRequestSt
   await renderResidentRequestsPage();
 }
 
+async function initCirculars() {
+  qs("[data-circular-form]")?.classList.toggle("hidden", !canManage());
+  await renderCircularsPage();
+
+  qs<HTMLFormElement>("[data-circular-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("circulars").insert({
+      title: String(form.get("title")),
+      kind: String(form.get("kind")),
+      target_role: String(form.get("target_role")),
+      due_date: String(form.get("due_date") || "") || null,
+      body: String(form.get("body")),
+      status: "published",
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-circular-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-circular-status]", "回覧を公開しました。");
+    await renderCircularsPage();
+  });
+}
+
+async function renderCircularsPage() {
+  const [{ data: circulars }, { data: acknowledgements }] = await Promise.all([
+    supabase!.from("circulars").select("*").order("updated_at", { ascending: false }),
+    supabase!.from("circular_acknowledgements").select("*, circulars(title, kind)").order("created_at", { ascending: false }),
+  ]);
+  const circularItems = (circulars ?? []) as Circular[];
+  const ackItems = (acknowledgements ?? []) as CircularAcknowledgement[];
+  const acknowledgedIds = new Set(ackItems.filter((ack) => ack.user_id === currentProfile?.id).map((ack) => ack.circular_id));
+  const today = new Date().toISOString().slice(0, 10);
+  const dueLimit = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  setText("[data-metric='circular-published']", String(circularItems.filter((item) => item.status === "published").length));
+  setText("[data-metric='circular-unread']", String(circularItems.filter((item) => item.status === "published" && !acknowledgedIds.has(item.id)).length));
+  setText("[data-metric='circular-due']", String(circularItems.filter((item) => item.status === "published" && item.due_date && item.due_date >= today && item.due_date <= dueLimit).length));
+  renderCircularList(circularItems, acknowledgedIds);
+  renderCircularAckList(ackItems);
+}
+
+function renderCircularList(circulars: Circular[], acknowledgedIds: Set<string>) {
+  const container = qs("[data-circular-list]");
+  if (!container) return;
+  if (!circulars.length) {
+    container.innerHTML = `<p class="meta">回覧はありません。</p>`;
+    return;
+  }
+  container.innerHTML = circulars
+    .map(
+      (item) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(item.title)}</strong>
+              <p class="meta">${circularKindLabels[item.kind]} / 対象 ${roleLabels[item.target_role as Role] ?? "全員"}${item.due_date ? ` / 期限 ${escapeHtml(item.due_date)}` : ""}</p>
+            </div>
+            ${circularStatusBadge(item.status, acknowledgedIds.has(item.id))}
+          </div>
+          <p>${escapeHtml(item.body)}</p>
+          ${
+            item.status === "published" && !acknowledgedIds.has(item.id)
+              ? `<div class="toolbar"><button class="button" type="button" data-circular-ack="${item.id}">確認済みにする</button></div>`
+              : canManage() && item.status === "published"
+                ? `<div class="toolbar"><button class="button secondary" type="button" data-circular-archive="${item.id}">保管する</button></div>`
+                : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-circular-ack]").forEach((button) => {
+    button.addEventListener("click", () => acknowledgeCircular(button.dataset.circularAck!));
+  });
+  qsa<HTMLButtonElement>("[data-circular-archive]").forEach((button) => {
+    button.addEventListener("click", () => updateCircularStatus(button.dataset.circularArchive!, "archived"));
+  });
+}
+
+function renderCircularAckList(acknowledgements: CircularAcknowledgement[]) {
+  const container = qs("[data-circular-ack-list]");
+  if (!container) return;
+  const ownAcks = acknowledgements.filter((ack) => ack.user_id === currentProfile?.id);
+  if (!ownAcks.length) {
+    container.innerHTML = `<p class="meta">確認履歴はありません。</p>`;
+    return;
+  }
+  container.innerHTML = ownAcks
+    .map(
+      (ack) => `
+        <article class="list-item">
+          <strong>${escapeHtml(ack.circulars?.title ?? "回覧")}</strong>
+          <p class="meta">${ack.circulars?.kind ? circularKindLabels[ack.circulars.kind] : "回覧"} / ${formatDateTime(ack.created_at)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+async function acknowledgeCircular(id: string) {
+  const { error } = await supabase!.from("circular_acknowledgements").upsert(
+    {
+      circular_id: id,
+      user_id: currentProfile!.id,
+    },
+    { onConflict: "circular_id,user_id", ignoreDuplicates: true },
+  );
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderCircularsPage();
+}
+
+async function updateCircularStatus(id: string, status: CircularStatus) {
+  const { error } = await supabase!.from("circulars").update({ status }).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderCircularsPage();
+}
+
+async function initLending() {
+  qs("[data-lending-item-form]")?.classList.toggle("hidden", !canManage());
+  await renderLendingPage();
+
+  qs<HTMLFormElement>("[data-lending-item-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("lending_items").insert({
+      name: String(form.get("name")),
+      kind: String(form.get("kind")),
+      location: String(form.get("location") || "") || null,
+      note: String(form.get("note") || "") || null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-lending-item-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-lending-item-status]", "貸出品を登録しました。");
+    await renderLendingPage();
+  });
+
+  qs<HTMLFormElement>("[data-lending-request-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("lending_requests").insert({
+      item_id: String(form.get("item_id")),
+      user_id: currentProfile!.id,
+      purpose: String(form.get("purpose")),
+      due_at: form.get("due_at") ? new Date(String(form.get("due_at"))).toISOString() : null,
+      status: "pending",
+    });
+    if (error) {
+      setStatus("[data-lending-request-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-lending-request-status]", "貸出申請を送信しました。");
+    await renderLendingPage();
+  });
+}
+
+async function renderLendingPage() {
+  const [{ data: items }, { data: requests }] = await Promise.all([
+    supabase!.from("lending_items").select("*").order("kind").order("name"),
+    supabase!.from("lending_requests").select("*, lending_items(name, kind, location)").order("created_at", { ascending: false }),
+  ]);
+  lendingItemsCache = (items ?? []) as LendingItem[];
+  const lendingRequests = (requests ?? []) as LendingRequest[];
+  const availableItems = lendingItemsCache.filter((item) => item.is_active && item.is_available);
+  setText("[data-metric='lending-available']", String(availableItems.length));
+  setText("[data-metric='lending-pending']", String(lendingRequests.filter((request) => request.status === "pending").length));
+  setText("[data-metric='lending-checked-out']", String(lendingRequests.filter((request) => request.status === "checked_out").length));
+  renderLendingItemSelect(availableItems);
+  renderLendingItems(lendingItemsCache);
+  renderLendingRequests(lendingRequests);
+}
+
+function renderLendingItemSelect(items: LendingItem[]) {
+  const select = qs<HTMLSelectElement>("[data-lending-item-select]");
+  if (!select) return;
+  const submit = qs<HTMLButtonElement>("[data-lending-request-form] button[type='submit']");
+  select.disabled = items.length === 0;
+  if (submit) submit.disabled = items.length === 0;
+  select.innerHTML = items.length
+    ? items.map((item) => `<option value="${item.id}">${lendingKindLabels[item.kind]} ${escapeHtml(item.name)}</option>`).join("")
+    : `<option value="">貸出可能な品目はありません</option>`;
+}
+
+function renderLendingItems(items: LendingItem[]) {
+  const container = qs("[data-lending-item-list]");
+  if (!container) return;
+  if (!items.length) {
+    container.innerHTML = `<p class="meta">貸出品はありません。</p>`;
+    return;
+  }
+  container.innerHTML = items
+    .map(
+      (item) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(item.name)}</strong>
+              <p class="meta">${lendingKindLabels[item.kind]} / ${escapeHtml(item.location ?? "-")}</p>
+            </div>
+            <span class="badge ${item.is_available ? "success" : "warning"}">${item.is_available ? "貸出可" : "貸出中"}</span>
+          </div>
+          ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderLendingRequests(requests: LendingRequest[]) {
+  const container = qs("[data-lending-request-list]");
+  if (!container) return;
+  if (!requests.length) {
+    container.innerHTML = `<p class="meta">貸出申請はありません。</p>`;
+    return;
+  }
+  container.innerHTML = requests
+    .map(
+      (request) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(request.lending_items?.name ?? "貸出品")}</strong>
+              <p class="meta">${request.due_at ? `返却予定 ${formatDateTime(request.due_at)}` : "返却予定なし"}</p>
+            </div>
+            ${lendingRequestStatusBadge(request.status)}
+          </div>
+          <p>${escapeHtml(request.purpose)}</p>
+          ${
+            canManage() && request.status === "pending"
+              ? `<div class="toolbar">
+                  <button class="button" type="button" data-lending-approve="${request.id}">貸出承認</button>
+                  <button class="button danger" type="button" data-lending-reject="${request.id}">却下</button>
+                </div>`
+              : canManage() && request.status === "checked_out"
+                ? `<div class="toolbar">
+                    <button class="button" type="button" data-lending-return="${request.id}">返却済み</button>
+                    <button class="button danger" type="button" data-lending-lost="${request.id}">紛失</button>
+                  </div>`
+                : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-lending-approve]").forEach((button) => {
+    button.addEventListener("click", () => updateLendingRequestStatus(button.dataset.lendingApprove!, "checked_out"));
+  });
+  qsa<HTMLButtonElement>("[data-lending-reject]").forEach((button) => {
+    button.addEventListener("click", () => updateLendingRequestStatus(button.dataset.lendingReject!, "rejected"));
+  });
+  qsa<HTMLButtonElement>("[data-lending-return]").forEach((button) => {
+    button.addEventListener("click", () => updateLendingRequestStatus(button.dataset.lendingReturn!, "returned"));
+  });
+  qsa<HTMLButtonElement>("[data-lending-lost]").forEach((button) => {
+    button.addEventListener("click", () => updateLendingRequestStatus(button.dataset.lendingLost!, "lost"));
+  });
+}
+
+async function updateLendingRequestStatus(id: string, status: LendingRequestStatus) {
+  const { data: request, error: requestError } = await supabase!.from("lending_requests").select("item_id").eq("id", id).single();
+  if (requestError || !request) {
+    alert(requestError?.message ?? "貸出申請を確認できませんでした。");
+    return;
+  }
+  const patch: Record<string, string | null> = { status };
+  if (status === "checked_out") {
+    patch.approved_by = currentProfile!.id;
+    patch.checkout_at = new Date().toISOString();
+  }
+  if (status === "returned") patch.returned_at = new Date().toISOString();
+  const { error } = await supabase!.from("lending_requests").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  if (status === "checked_out" || status === "returned") {
+    await supabase!.from("lending_items").update({ is_available: status === "returned" }).eq("id", request.item_id);
+  }
+  await renderLendingPage();
+}
+
 async function initAdmin() {
   if (!isAdmin()) {
     qs(".main")!.innerHTML = `<section class="panel"><h1>アクセス権限がありません</h1><p class="meta">管理者のみ利用できます。</p></section>`;
@@ -2613,6 +2989,17 @@ function parkingPermitStatusBadge(status: ParkingPermitStatus) {
 function residentRequestStatusBadge(status: ResidentRequestStatus) {
   const className = status === "resolved" || status === "closed" ? "success" : "warning";
   return `<span class="badge ${className}">${residentRequestStatusLabels[status]}</span>`;
+}
+
+function circularStatusBadge(status: CircularStatus, acknowledged: boolean) {
+  if (acknowledged) return `<span class="badge success">確認済み</span>`;
+  const className = status === "published" ? "warning" : "success";
+  return `<span class="badge ${className}">${circularStatusLabels[status]}</span>`;
+}
+
+function lendingRequestStatusBadge(status: LendingRequestStatus) {
+  const className = status === "returned" ? "success" : status === "pending" || status === "checked_out" ? "warning" : "danger";
+  return `<span class="badge ${className}">${lendingRequestStatusLabels[status]}</span>`;
 }
 
 void init();
