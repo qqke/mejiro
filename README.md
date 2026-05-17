@@ -39,7 +39,7 @@ npm run build
 
 ## GitHub Pages デプロイ
 
-`.github/workflows/deploy.yml` が `main` への push、pull request、手動実行でビルドを走らせます。pull request ではビルド確認のみ、`main` への push と手動実行では GitHub Pages へ `dist/` を公開します。
+`.github/workflows/deploy.yml` が `main` への push、pull request、手動実行でビルドを走らせます。pull request ではビルド確認のみ、`main` への push と手動実行では GitHub Pages を有効化して `dist/` を公開します。
 
 GitHub リポジトリ側で Pages の Source を `GitHub Actions` に設定し、以下の repository secrets を登録してください。
 
