@@ -16,6 +16,7 @@ import {
   KeyRound,
   Newspaper,
   NotebookTabs,
+  Recycle,
   Settings,
   ShieldCheck,
   Store,
@@ -44,6 +45,8 @@ type Props = {
     | "requests"
     | "circulars"
     | "lending"
+    | "duties"
+    | "waste"
     | "admin";
 };
 
@@ -69,6 +72,8 @@ const navItems = [
   { href: asset("/requests/"), label: "相談苦情", page: "requests", icon: MessageSquareWarning },
   { href: asset("/circulars/"), label: "回覧配布", page: "circulars", icon: Newspaper },
   { href: asset("/lending/"), label: "鍵貸出", page: "lending", icon: KeyRound },
+  { href: asset("/duties/"), label: "当番巡回", page: "duties", icon: ClipboardList },
+  { href: asset("/waste/"), label: "ごみ資源", page: "waste", icon: Recycle },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

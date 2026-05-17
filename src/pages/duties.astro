@@ -1,0 +1,87 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { CheckCircle2, ClipboardList, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="当番巡回" page="duties">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Duties</p>
+      <h1>当番・巡回</h1>
+      <p class="lead">清掃当番、共用部巡回、植栽確認、会議準備などの日付、担当、完了状況を管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="当番巡回指標">
+    <div class="panel metric">
+      <span>予定</span>
+      <strong data-metric="duty-planned">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>本日期限</span>
+      <strong data-metric="duty-today">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>完了</span>
+      <strong data-metric="duty-done">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-duty-form>
+      <h2><Plus size={18} aria-hidden="true" /> 当番を作成</h2>
+      <div class="field">
+        <label for="duty-title">件名</label>
+        <input class="input" id="duty-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="duty-kind">種別</label>
+          <select class="select" id="duty-kind" name="kind">
+            <option value="cleaning">清掃</option>
+            <option value="patrol">巡回</option>
+            <option value="meeting">会議準備</option>
+            <option value="garden">植栽</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="duty-date">予定日</label>
+          <input class="input" id="duty-date" name="scheduled_date" type="date" required />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="duty-assignee">担当者 ID</label>
+          <input class="input" id="duty-assignee" name="assignee_id" placeholder="未指定なら作成者が担当" />
+        </div>
+        <div class="field">
+          <label for="duty-location">場所</label>
+          <input class="input" id="duty-location" name="location" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="duty-note">メモ</label>
+        <textarea class="textarea" id="duty-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">作成する</button>
+      <p class="status" data-duty-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><ClipboardList size={18} aria-hidden="true" /> 当番一覧</h2>
+      <div class="duty-filters segmented" aria-label="当番フィルター">
+        <button class="segment active" type="button" data-duty-filter="all">全体</button>
+        <button class="segment" type="button" data-duty-filter="planned">予定</button>
+        <button class="segment" type="button" data-duty-filter="done">完了</button>
+        <button class="segment" type="button" data-duty-filter="missed">未実施</button>
+      </div>
+      <div class="list" data-duty-list></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top: 16px;">
+    <h2><CheckCircle2 size={18} aria-hidden="true" /> 自分の当番</h2>
+    <div class="list compact-list" data-duty-own-list></div>
+  </section>
+</AppLayout>

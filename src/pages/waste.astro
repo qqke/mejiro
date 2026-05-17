@@ -1,0 +1,101 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { CalendarDays, Plus, Recycle } from "@lucide/astro";
+---
+
+<AppLayout title="ごみ資源" page="waste">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Waste</p>
+      <h1>ごみ・資源</h1>
+      <p class="lead">燃えるごみ、資源、粗大ごみ、有害ごみの収集日、出し方、粗大ごみ申請をまとめます。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="ごみ資源指標">
+    <div class="panel metric">
+      <span>収集ルール</span>
+      <strong data-metric="waste-schedules">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>粗大ごみ申請</span>
+      <strong data-metric="bulky-submitted">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>予約済み</span>
+      <strong data-metric="bulky-scheduled">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-waste-schedule-form>
+      <h2><Plus size={18} aria-hidden="true" /> 収集ルールを登録</h2>
+      <div class="field">
+        <label for="waste-title">件名</label>
+        <input class="input" id="waste-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="waste-category">区分</label>
+          <select class="select" id="waste-category" name="category">
+            <option value="burnable">燃えるごみ</option>
+            <option value="non_burnable">燃えないごみ</option>
+            <option value="recycle">資源</option>
+            <option value="oversized">粗大ごみ</option>
+            <option value="hazardous">有害ごみ</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="waste-day">収集日</label>
+          <input class="input" id="waste-day" name="collection_day" placeholder="毎週月曜 / 第2金曜など" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="waste-location">集積場所</label>
+        <input class="input" id="waste-location" name="location" />
+      </div>
+      <div class="field">
+        <label for="waste-note">出し方</label>
+        <textarea class="textarea" id="waste-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">登録する</button>
+      <p class="status" data-waste-schedule-status></p>
+    </form>
+
+    <form class="panel grid" data-bulky-request-form>
+      <h2><Recycle size={18} aria-hidden="true" /> 粗大ごみ申請</h2>
+      <div class="field">
+        <label for="bulky-item">品目</label>
+        <input class="input" id="bulky-item" name="item_name" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="bulky-preferred">希望日</label>
+          <input class="input" id="bulky-preferred" name="preferred_date" type="date" />
+        </div>
+        <div class="field">
+          <label for="bulky-location">搬出場所</label>
+          <input class="input" id="bulky-location" name="pickup_location" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="bulky-note">メモ</label>
+        <textarea class="textarea" id="bulky-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">申請する</button>
+      <p class="status" data-bulky-request-status></p>
+    </form>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <h2><CalendarDays size={18} aria-hidden="true" /> 収集ルール</h2>
+      <div class="list" data-waste-schedule-list></div>
+    </div>
+    <div class="panel">
+      <h2><Recycle size={18} aria-hidden="true" /> 粗大ごみ申請一覧</h2>
+      <div class="list" data-bulky-request-list></div>
+    </div>
+  </section>
+</AppLayout>

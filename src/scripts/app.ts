@@ -241,6 +241,10 @@ type CircularKind = "notice" | "minutes" | "event" | "rule" | "other";
 type CircularStatus = "published" | "archived";
 type LendingItemKind = "key" | "equipment" | "document" | "other";
 type LendingRequestStatus = "pending" | "checked_out" | "returned" | "rejected" | "lost";
+type DutyKind = "cleaning" | "patrol" | "meeting" | "garden" | "other";
+type DutyStatus = "planned" | "done" | "missed" | "cancelled";
+type WasteCategory = "burnable" | "non_burnable" | "recycle" | "oversized" | "hazardous" | "other";
+type BulkyWasteStatus = "submitted" | "scheduled" | "completed" | "cancelled";
 
 type ParkingSpace = {
   id: string;
@@ -326,6 +330,46 @@ type LendingRequest = {
   lending_items?: Pick<LendingItem, "name" | "kind" | "location"> | null;
 };
 
+type DutyAssignment = {
+  id: string;
+  title: string;
+  kind: DutyKind;
+  status: DutyStatus;
+  assignee_id: string | null;
+  scheduled_date: string;
+  location: string | null;
+  note: string | null;
+  created_by: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type WasteSchedule = {
+  id: string;
+  title: string;
+  category: WasteCategory;
+  collection_day: string;
+  location: string | null;
+  note: string | null;
+  is_active: boolean;
+};
+
+type BulkyWasteRequest = {
+  id: string;
+  user_id: string;
+  item_name: string;
+  status: BulkyWasteStatus;
+  preferred_date: string | null;
+  pickup_location: string | null;
+  note: string | null;
+  scheduled_date: string | null;
+  handled_by: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -342,6 +386,7 @@ let taskFilter: BoardTaskStatus | "all" = "all";
 let parkingSpacesCache: ParkingSpace[] = [];
 let residentRequestFilter: ResidentRequestStatus | "all" = "all";
 let lendingItemsCache: LendingItem[] = [];
+let dutyFilter: DutyStatus | "all" = "all";
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -513,6 +558,37 @@ const lendingRequestStatusLabels: Record<LendingRequestStatus, string> = {
   lost: "紛失",
 };
 
+const dutyKindLabels: Record<DutyKind, string> = {
+  cleaning: "清掃",
+  patrol: "巡回",
+  meeting: "会議準備",
+  garden: "植栽",
+  other: "その他",
+};
+
+const dutyStatusLabels: Record<DutyStatus, string> = {
+  planned: "予定",
+  done: "完了",
+  missed: "未実施",
+  cancelled: "中止",
+};
+
+const wasteCategoryLabels: Record<WasteCategory, string> = {
+  burnable: "燃えるごみ",
+  non_burnable: "燃えないごみ",
+  recycle: "資源",
+  oversized: "粗大ごみ",
+  hazardous: "有害ごみ",
+  other: "その他",
+};
+
+const bulkyWasteStatusLabels: Record<BulkyWasteStatus, string> = {
+  submitted: "申請中",
+  scheduled: "予約済み",
+  completed: "完了",
+  cancelled: "取消",
+};
+
 const roomPalette = ["#176b5b", "#3f6fb5", "#9a5b13", "#7c3aed", "#be3455", "#2f7d32"];
 
 const statusColors: Record<BookingStatus, { background: string; border: string; text: string }> = {
@@ -645,6 +721,8 @@ async function init() {
   if (page === "requests") await initResidentRequests();
   if (page === "circulars") await initCirculars();
   if (page === "lending") await initLending();
+  if (page === "duties") await initDuties();
+  if (page === "waste") await initWaste();
   if (page === "admin") await initAdmin();
 }
 
@@ -2810,6 +2888,264 @@ async function updateLendingRequestStatus(id: string, status: LendingRequestStat
   await renderLendingPage();
 }
 
+async function initDuties() {
+  qs("[data-duty-form]")?.classList.toggle("hidden", !canManage());
+  await renderDutiesPage();
+
+  qsa<HTMLButtonElement>("[data-duty-filter]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      dutyFilter = (button.dataset.dutyFilter as DutyStatus | "all") ?? "all";
+      qsa<HTMLButtonElement>("[data-duty-filter]").forEach((item) => item.classList.toggle("active", item === button));
+      await renderDutiesPage();
+    });
+  });
+
+  qs<HTMLFormElement>("[data-duty-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const assignee = String(form.get("assignee_id") || "").trim();
+    const { error } = await supabase!.from("duty_assignments").insert({
+      title: String(form.get("title")),
+      kind: String(form.get("kind")),
+      assignee_id: assignee || currentProfile!.id,
+      scheduled_date: String(form.get("scheduled_date")),
+      location: String(form.get("location") || "") || null,
+      note: String(form.get("note") || "") || null,
+      status: "planned",
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-duty-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-duty-status]", "当番を作成しました。");
+    await renderDutiesPage();
+  });
+}
+
+async function renderDutiesPage() {
+  const { data } = await supabase!.from("duty_assignments").select("*").order("scheduled_date", { ascending: true }).order("created_at", { ascending: false });
+  const duties = (data ?? []) as DutyAssignment[];
+  const today = new Date().toISOString().slice(0, 10);
+  const shownDuties = dutyFilter === "all" ? duties : duties.filter((duty) => duty.status === dutyFilter);
+  setText("[data-metric='duty-planned']", String(duties.filter((duty) => duty.status === "planned").length));
+  setText("[data-metric='duty-today']", String(duties.filter((duty) => duty.status === "planned" && duty.scheduled_date === today).length));
+  setText("[data-metric='duty-done']", String(duties.filter((duty) => duty.status === "done").length));
+  renderDutyList(shownDuties);
+  renderOwnDutyList(duties.filter((duty) => duty.assignee_id === currentProfile?.id));
+  bindDutyActions();
+}
+
+function renderDutyList(duties: DutyAssignment[]) {
+  const container = qs("[data-duty-list]");
+  if (!container) return;
+  if (!duties.length) {
+    container.innerHTML = `<p class="meta">当番はありません。</p>`;
+    return;
+  }
+  container.innerHTML = duties.map(renderDutyItem).join("");
+}
+
+function renderOwnDutyList(duties: DutyAssignment[]) {
+  const container = qs("[data-duty-own-list]");
+  if (!container) return;
+  if (!duties.length) {
+    container.innerHTML = `<p class="meta">自分の当番はありません。</p>`;
+    return;
+  }
+  container.innerHTML = duties.map(renderDutyItem).join("");
+}
+
+function renderDutyItem(duty: DutyAssignment) {
+  return `
+    <article class="list-item">
+      <div class="list-row">
+        <div>
+          <strong>${escapeHtml(duty.title)}</strong>
+          <p class="meta">${dutyKindLabels[duty.kind]} / ${escapeHtml(duty.scheduled_date)}${duty.location ? ` / ${escapeHtml(duty.location)}` : ""}</p>
+        </div>
+        ${dutyStatusBadge(duty.status)}
+      </div>
+      ${duty.note ? `<p>${escapeHtml(duty.note)}</p>` : ""}
+      ${
+        duty.status === "planned" && (canManage() || duty.assignee_id === currentProfile?.id)
+          ? `<div class="toolbar">
+              <button class="button" type="button" data-duty-done="${duty.id}">完了</button>
+              ${canManage() ? `<button class="button secondary" type="button" data-duty-missed="${duty.id}">未実施</button><button class="button danger" type="button" data-duty-cancel="${duty.id}">中止</button>` : ""}
+            </div>`
+          : ""
+      }
+    </article>
+  `;
+}
+
+function bindDutyActions() {
+  qsa<HTMLButtonElement>("[data-duty-done]").forEach((button) => {
+    button.addEventListener("click", () => updateDutyStatus(button.dataset.dutyDone!, "done"));
+  });
+  qsa<HTMLButtonElement>("[data-duty-missed]").forEach((button) => {
+    button.addEventListener("click", () => updateDutyStatus(button.dataset.dutyMissed!, "missed"));
+  });
+  qsa<HTMLButtonElement>("[data-duty-cancel]").forEach((button) => {
+    button.addEventListener("click", () => updateDutyStatus(button.dataset.dutyCancel!, "cancelled"));
+  });
+}
+
+async function updateDutyStatus(id: string, status: DutyStatus) {
+  const patch: Record<string, string | null> = { status, completed_at: status === "done" ? new Date().toISOString() : null };
+  const { error } = await supabase!.from("duty_assignments").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderDutiesPage();
+}
+
+async function initWaste() {
+  qs("[data-waste-schedule-form]")?.classList.toggle("hidden", !canManage());
+  await renderWastePage();
+
+  qs<HTMLFormElement>("[data-waste-schedule-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("waste_schedules").insert({
+      title: String(form.get("title")),
+      category: String(form.get("category")),
+      collection_day: String(form.get("collection_day")),
+      location: String(form.get("location") || "") || null,
+      note: String(form.get("note") || "") || null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-waste-schedule-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-waste-schedule-status]", "収集ルールを登録しました。");
+    await renderWastePage();
+  });
+
+  qs<HTMLFormElement>("[data-bulky-request-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("bulky_waste_requests").insert({
+      user_id: currentProfile!.id,
+      item_name: String(form.get("item_name")),
+      preferred_date: String(form.get("preferred_date") || "") || null,
+      pickup_location: String(form.get("pickup_location") || "") || null,
+      note: String(form.get("note") || "") || null,
+      status: "submitted",
+    });
+    if (error) {
+      setStatus("[data-bulky-request-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-bulky-request-status]", "粗大ごみ申請を送信しました。");
+    await renderWastePage();
+  });
+}
+
+async function renderWastePage() {
+  const [{ data: schedules }, { data: requests }] = await Promise.all([
+    supabase!.from("waste_schedules").select("*").order("category").order("collection_day"),
+    supabase!.from("bulky_waste_requests").select("*").order("created_at", { ascending: false }),
+  ]);
+  const wasteSchedules = (schedules ?? []) as WasteSchedule[];
+  const bulkyRequests = (requests ?? []) as BulkyWasteRequest[];
+  setText("[data-metric='waste-schedules']", String(wasteSchedules.filter((schedule) => schedule.is_active).length));
+  setText("[data-metric='bulky-submitted']", String(bulkyRequests.filter((request) => request.status === "submitted").length));
+  setText("[data-metric='bulky-scheduled']", String(bulkyRequests.filter((request) => request.status === "scheduled").length));
+  renderWasteSchedules(wasteSchedules);
+  renderBulkyWasteRequests(bulkyRequests);
+}
+
+function renderWasteSchedules(schedules: WasteSchedule[]) {
+  const container = qs("[data-waste-schedule-list]");
+  if (!container) return;
+  if (!schedules.length) {
+    container.innerHTML = `<p class="meta">収集ルールはありません。</p>`;
+    return;
+  }
+  container.innerHTML = schedules
+    .map(
+      (schedule) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(schedule.title)}</strong>
+              <p class="meta">${wasteCategoryLabels[schedule.category]} / ${escapeHtml(schedule.collection_day)}${schedule.location ? ` / ${escapeHtml(schedule.location)}` : ""}</p>
+            </div>
+            <span class="badge ${schedule.is_active ? "success" : "danger"}">${schedule.is_active ? "有効" : "停止"}</span>
+          </div>
+          ${schedule.note ? `<p>${escapeHtml(schedule.note)}</p>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderBulkyWasteRequests(requests: BulkyWasteRequest[]) {
+  const container = qs("[data-bulky-request-list]");
+  if (!container) return;
+  if (!requests.length) {
+    container.innerHTML = `<p class="meta">粗大ごみ申請はありません。</p>`;
+    return;
+  }
+  container.innerHTML = requests
+    .map(
+      (request) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(request.item_name)}</strong>
+              <p class="meta">${request.preferred_date ? `希望 ${escapeHtml(request.preferred_date)}` : "希望日なし"}${request.pickup_location ? ` / ${escapeHtml(request.pickup_location)}` : ""}</p>
+            </div>
+            ${bulkyWasteStatusBadge(request.status)}
+          </div>
+          ${request.note ? `<p>${escapeHtml(request.note)}</p>` : ""}
+          ${
+            canManage() && request.status === "submitted"
+              ? `<div class="toolbar">
+                  <button class="button" type="button" data-bulky-schedule="${request.id}">予約済み</button>
+                  <button class="button danger" type="button" data-bulky-cancel="${request.id}">取消</button>
+                </div>`
+              : canManage() && request.status === "scheduled"
+                ? `<div class="toolbar"><button class="button" type="button" data-bulky-complete="${request.id}">完了</button></div>`
+                : request.user_id === currentProfile?.id && request.status === "submitted"
+                  ? `<div class="toolbar"><button class="button secondary" type="button" data-bulky-cancel="${request.id}">取り下げ</button></div>`
+                  : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-bulky-schedule]").forEach((button) => {
+    button.addEventListener("click", () => updateBulkyWasteStatus(button.dataset.bulkySchedule!, "scheduled"));
+  });
+  qsa<HTMLButtonElement>("[data-bulky-complete]").forEach((button) => {
+    button.addEventListener("click", () => updateBulkyWasteStatus(button.dataset.bulkyComplete!, "completed"));
+  });
+  qsa<HTMLButtonElement>("[data-bulky-cancel]").forEach((button) => {
+    button.addEventListener("click", () => updateBulkyWasteStatus(button.dataset.bulkyCancel!, "cancelled"));
+  });
+}
+
+async function updateBulkyWasteStatus(id: string, status: BulkyWasteStatus) {
+  const patch: Record<string, string | null> = { status };
+  if (canManage()) patch.handled_by = currentProfile!.id;
+  if (status === "scheduled") patch.scheduled_date = new Date().toISOString().slice(0, 10);
+  if (status === "completed") patch.completed_at = new Date().toISOString();
+  const { error } = await supabase!.from("bulky_waste_requests").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderWastePage();
+}
+
 async function initAdmin() {
   if (!isAdmin()) {
     qs(".main")!.innerHTML = `<section class="panel"><h1>アクセス権限がありません</h1><p class="meta">管理者のみ利用できます。</p></section>`;
@@ -3000,6 +3336,16 @@ function circularStatusBadge(status: CircularStatus, acknowledged: boolean) {
 function lendingRequestStatusBadge(status: LendingRequestStatus) {
   const className = status === "returned" ? "success" : status === "pending" || status === "checked_out" ? "warning" : "danger";
   return `<span class="badge ${className}">${lendingRequestStatusLabels[status]}</span>`;
+}
+
+function dutyStatusBadge(status: DutyStatus) {
+  const className = status === "done" ? "success" : status === "planned" ? "warning" : "danger";
+  return `<span class="badge ${className}">${dutyStatusLabels[status]}</span>`;
+}
+
+function bulkyWasteStatusBadge(status: BulkyWasteStatus) {
+  const className = status === "completed" ? "success" : status === "submitted" || status === "scheduled" ? "warning" : "danger";
+  return `<span class="badge ${className}">${bulkyWasteStatusLabels[status]}</span>`;
 }
 
 void init();
