@@ -37,7 +37,18 @@ npm run dev
 npm run build
 ```
 
-GitHub Pages に置く場合、リポジトリ名のサブパスで公開するなら `astro.config.mjs` の `base` を設定してください。
+## GitHub Pages デプロイ
+
+`.github/workflows/deploy.yml` が `main` への push、pull request、手動実行でビルドを走らせます。pull request ではビルド確認のみ、`main` への push と手動実行では GitHub Pages へ `dist/` を公開します。
+
+GitHub リポジトリ側で Pages の Source を `GitHub Actions` に設定し、以下の repository secrets を登録してください。
+
+- `ASTRO_BASE_PATH`
+- `PUBLIC_SITE_URL`
+- `PUBLIC_SUPABASE_URL`
+- `PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+
+`ASTRO_BASE_PATH` は Project Pages なら `/リポジトリ名`、User/Org Pages や独自ドメイン直下なら空にします。未設定の場合は `astro.config.mjs` が Actions 上で GitHub Pages のリポジトリサブパスを自動推定します。
 
 ## Supabase 方針
 
