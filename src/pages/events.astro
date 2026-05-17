@@ -1,0 +1,58 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { CalendarPlus } from "@lucide/astro";
+---
+
+<AppLayout title="年間行事" page="events">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Annual Events</p>
+      <h1>年間行事</h1>
+      <p class="lead">清掃、総会、防災訓練など、年間の管理組合イベントを一覧できます。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-2">
+    <form class="panel grid hidden" data-event-form>
+      <h2><CalendarPlus size={18} aria-hidden="true" /> 行事を追加</h2>
+      <div class="field">
+        <label for="event-title">行事名</label>
+        <input class="input" id="event-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="event-start">開始</label>
+          <input class="input" id="event-start" name="start_at" type="datetime-local" required />
+        </div>
+        <div class="field">
+          <label for="event-end">終了</label>
+          <input class="input" id="event-end" name="end_at" type="datetime-local" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="event-location">場所</label>
+        <input class="input" id="event-location" name="location" />
+      </div>
+      <div class="field">
+        <label for="event-description">説明</label>
+        <textarea class="textarea" id="event-description" name="description"></textarea>
+      </div>
+      <button class="button" type="submit">保存する</button>
+      <p class="status" data-event-status></p>
+    </form>
+
+    <div class="panel">
+      <h2>今後の行事</h2>
+      <div class="list" data-event-list></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top: 16px;">
+    <div class="toolbar">
+      <button class="icon-button secondary" type="button" data-action="prev-event-month" aria-label="前月">‹</button>
+      <strong data-event-month></strong>
+      <button class="icon-button secondary" type="button" data-action="next-event-month" aria-label="翌月">›</button>
+    </div>
+    <div class="calendar" data-event-calendar></div>
+  </section>
+</AppLayout>

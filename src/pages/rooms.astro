@@ -1,0 +1,82 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from "@lucide/astro";
+---
+
+<AppLayout title="会議室予約" page="rooms">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Meeting Rooms</p>
+      <h1>会議室予約</h1>
+      <p class="lead">空き時間を確認して予約申請できます。理事または管理者が承認すると確定します。</p>
+    </div>
+  </header>
+
+  <section class="rooms-workspace">
+    <div class="panel calendar-panel">
+      <div class="calendar-toolbar">
+        <div class="toolbar">
+          <button class="icon-button secondary" type="button" data-calendar-action="prev" aria-label="前へ">
+            <ChevronLeft size={17} aria-hidden="true" />
+          </button>
+          <button class="button secondary" type="button" data-calendar-action="today">今日</button>
+          <button class="icon-button secondary" type="button" data-calendar-action="next" aria-label="次へ">
+            <ChevronRight size={17} aria-hidden="true" />
+          </button>
+        </div>
+        <strong class="calendar-title" data-calendar-title></strong>
+        <div class="segmented" aria-label="表示切替">
+          <button class="segment active" type="button" data-calendar-view="dayGridMonth">月</button>
+          <button class="segment" type="button" data-calendar-view="timeGridWeek">週</button>
+          <button class="segment" type="button" data-calendar-view="timeGridDay">日</button>
+        </div>
+      </div>
+      <div class="visual-calendar" data-booking-calendar></div>
+    </div>
+
+    <aside class="rooms-side">
+      <form class="panel grid" data-booking-form>
+        <h2><Plus size={18} aria-hidden="true" /> 予約申請</h2>
+        <div class="field">
+          <label for="room-id">会議室</label>
+          <select class="select" id="room-id" name="room_id" required data-room-select></select>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="start-at">開始</label>
+            <input class="input" id="start-at" name="start_at" type="datetime-local" required />
+          </div>
+          <div class="field">
+            <label for="end-at">終了</label>
+            <input class="input" id="end-at" name="end_at" type="datetime-local" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="purpose">利用目的</label>
+          <textarea class="textarea" id="purpose" name="purpose" required></textarea>
+        </div>
+        <button class="button" type="submit">申請する</button>
+        <p class="status" data-booking-status></p>
+      </form>
+
+      <div class="panel hidden" data-booking-detail>
+        <div class="list-row">
+          <h2><CalendarDays size={18} aria-hidden="true" /> 予約詳細</h2>
+          <button class="icon-button secondary" type="button" data-action="close-booking-detail" aria-label="閉じる">
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <div class="booking-detail-body" data-booking-detail-body></div>
+        <div class="toolbar hidden" data-booking-detail-actions>
+          <button class="button" type="button" data-detail-approve><Check size={16} aria-hidden="true" />承認</button>
+          <button class="button danger" type="button" data-detail-reject><X size={16} aria-hidden="true" />却下</button>
+        </div>
+      </div>
+
+      <div class="panel compact-panel">
+        <h2>承認待ち</h2>
+        <div class="list compact-list" data-pending-bookings></div>
+      </div>
+    </aside>
+  </section>
+</AppLayout>

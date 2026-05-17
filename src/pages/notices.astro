@@ -1,0 +1,52 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Bell, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="通知・課題" page="notices">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Notices</p>
+      <h1>通知・課題</h1>
+      <p class="lead">管理組合からの通知、会議案内、検討課題を確認します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-2">
+    <form class="panel grid hidden" data-notice-form>
+      <h2><Plus size={18} aria-hidden="true" /> 通知を発行</h2>
+      <div class="field">
+        <label for="notice-title">タイトル</label>
+        <input class="input" id="notice-title" name="title" required />
+      </div>
+      <div class="field">
+        <label for="notice-kind">種別</label>
+        <select class="select" id="notice-kind" name="kind">
+          <option value="notice">通知</option>
+          <option value="meeting">会議案内</option>
+          <option value="topic">課題</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="target-role">公開範囲</label>
+        <select class="select" id="target-role" name="target_role">
+          <option value="all">全体</option>
+          <option value="resident">居民</option>
+          <option value="board_member">理事</option>
+          <option value="admin">管理者</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="notice-body">本文</label>
+        <textarea class="textarea" id="notice-body" name="body" required></textarea>
+      </div>
+      <button class="button" type="submit">発行する</button>
+      <p class="status" data-notice-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><Bell size={18} aria-hidden="true" /> 通知一覧</h2>
+      <div class="list" data-notice-list></div>
+    </div>
+  </section>
+</AppLayout>

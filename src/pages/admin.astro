@@ -1,0 +1,44 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Building2, Users } from "@lucide/astro";
+---
+
+<AppLayout title="管理" page="admin">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Admin</p>
+      <h1>管理</h1>
+      <p class="lead">会議室、ユーザー権限、予約状況を管理します。ユーザー作成は Supabase Dashboard で行います。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-2">
+    <form class="panel grid" data-room-form>
+      <h2><Building2 size={18} aria-hidden="true" /> 会議室を追加</h2>
+      <div class="field">
+        <label for="room-name">会議室名</label>
+        <input class="input" id="room-name" name="name" required />
+      </div>
+      <div class="field">
+        <label for="room-capacity">定員</label>
+        <input class="input" id="room-capacity" name="capacity" type="number" min="1" value="10" />
+      </div>
+      <div class="field">
+        <label for="room-notes">備考</label>
+        <textarea class="textarea" id="room-notes" name="notes"></textarea>
+      </div>
+      <button class="button" type="submit">追加する</button>
+      <p class="status" data-room-status></p>
+    </form>
+
+    <div class="panel">
+      <h2>会議室一覧</h2>
+      <div class="list" data-room-list></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top: 16px;">
+    <h2><Users size={18} aria-hidden="true" /> ユーザー権限</h2>
+    <div class="list" data-profile-list></div>
+  </section>
+</AppLayout>

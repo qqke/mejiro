@@ -1,0 +1,58 @@
+---
+import "../styles/global.css";
+const base = import.meta.env.BASE_URL;
+const asset = (path: string) => `${base}${path.replace(/^\//, "")}`;
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href={asset("/favicon.svg")} />
+    <link rel="icon" href={asset("/favicon.ico")} />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>ログイン | 団地管理組合</title>
+  </head>
+  <body data-page="login">
+    <main class="login-page">
+      <section class="login-visual" aria-label="団地管理組合">
+        <div class="brand">
+          <span class="brand-mark">団</span>
+          <span>
+            <span class="brand-title">団地管理組合</span>
+            <span class="brand-subtitle">電子化システム v1</span>
+          </span>
+        </div>
+        <div>
+          <p class="eyebrow">Mejiro Housing Operations</p>
+          <h1>予約、通知、年間行事を静かに整える。</h1>
+          <p>住民、理事、管理者が同じ情報を確認し、日々の管理を軽くするための業務画面です。</p>
+        </div>
+      </section>
+
+      <section class="login-form-wrap">
+        <form class="panel grid" data-login-form>
+          <div>
+            <p class="eyebrow">Sign in</p>
+            <h2>ログイン</h2>
+            <p class="meta">管理者が Supabase で作成したメールアドレスとパスワードを入力してください。</p>
+          </div>
+          <div class="field">
+            <label for="email">メールアドレス</label>
+            <input class="input" id="email" name="email" type="email" autocomplete="email" required />
+          </div>
+          <div class="field">
+            <label for="password">パスワード</label>
+            <input class="input" id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <button class="button" type="submit">ログイン</button>
+          <p class="status" data-status></p>
+        </form>
+      </section>
+    </main>
+
+    <script>
+      import "../scripts/app.ts";
+    </script>
+  </body>
+</html>

@@ -1,0 +1,61 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Bell, Building2, CalendarDays, ClipboardList } from "@lucide/astro";
+const base = import.meta.env.BASE_URL;
+---
+
+<AppLayout title="ホーム" page="home">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Dashboard</p>
+      <h1>今日の管理状況</h1>
+      <p class="lead">会議室予約、通知・課題、年間行事を一つの画面で確認できます。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="主要指標">
+    <div class="panel metric">
+      <span>承認待ち予約</span>
+      <strong data-metric="pending-bookings">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>未読通知</span>
+      <strong data-metric="unread-notices">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>今月の行事</span>
+      <strong data-metric="month-events">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <div class="list-row">
+        <h2><Building2 size={18} aria-hidden="true" /> 直近の会議室予約</h2>
+        <a class="button secondary" href={`${base}rooms/`}>予約を見る</a>
+      </div>
+      <div class="list" data-home-bookings></div>
+    </div>
+
+    <div class="panel">
+      <div class="list-row">
+        <h2><Bell size={18} aria-hidden="true" /> 最新通知・課題</h2>
+        <a class="button secondary" href={`${base}notices/`}>通知を見る</a>
+      </div>
+      <div class="list" data-home-notices></div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top: 16px;">
+    <div class="list-row">
+      <h2><CalendarDays size={18} aria-hidden="true" /> 今後の年間行事</h2>
+      <a class="button secondary" href={`${base}events/`}>行事を見る</a>
+    </div>
+    <div class="list" data-home-events></div>
+  </section>
+
+  <section class="panel" style="margin-top: 16px;">
+    <h2><ClipboardList size={18} aria-hidden="true" /> v2 予定</h2>
+    <p class="meta">管理文書の版管理、承認フロー、電子印影は v1 の運用が安定してから追加します。</p>
+  </section>
+</AppLayout>
