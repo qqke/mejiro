@@ -9,6 +9,10 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "smoke:meetings": "node tests/browser/meetings-smoke.mjs",
+    "smoke:inspections": "node tests/browser/inspections-smoke.mjs",
+    "smoke:functionality": "node tests/browser/functionality-smoke.mjs",
+    "smoke": "node tests/browser/run-smoke.mjs",
     "astro": "astro"
   },
   "dependencies": {
@@ -20,5 +24,9 @@
     "@supabase/supabase-js": "^2.105.4",
     "animejs": "^4.4.1",
     "astro": "^6.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "playwright": "^1.60.0"
   }
 }

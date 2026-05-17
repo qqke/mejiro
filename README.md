@@ -124,6 +124,17 @@ npm run dev
 npm run build
 ```
 
+## 浏览器烟测
+
+```sh
+npm run smoke
+npm run smoke:functionality
+npm run smoke:meetings
+npm run smoke:inspections
+```
+
+默认会检查未登录时的路由跳转和登录页；如果要跑登录态分支，可以额外设置 `SMOKE_EMAIL` 和 `SMOKE_PASSWORD`。
+
 ## GitHub Pages 部署
 
 `.github/workflows/deploy.yml` 会在以下场景运行：

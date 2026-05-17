@@ -863,7 +863,9 @@ async function initLogin() {
 
   qs<HTMLFormElement>("[data-login-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     setStatus("[data-status]", "ログイン中...");
     const { error } = await supabase!.auth.signInWithPassword({
       email: String(form.get("email")),
@@ -940,7 +942,9 @@ async function initRooms() {
 
   qs<HTMLFormElement>("[data-booking-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const roomId = String(form.get("room_id"));
     const startAt = new Date(String(form.get("start_at")));
     const endAt = new Date(String(form.get("end_at")));
@@ -970,7 +974,7 @@ async function initRooms() {
       return;
     }
 
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-booking-status]", "予約申請を送信しました。");
     await refreshBookingCalendar();
   });
@@ -1081,9 +1085,10 @@ function syncCalendarToolbar() {
 }
 
 async function refreshBookingCalendar() {
+  await loadBookings();
   bookingCalendar?.refetchEvents();
   qs("[data-booking-detail]")?.classList.add("hidden");
-  await refreshPendingBookings();
+  renderPendingBookings(bookingsCache.filter((booking) => booking.status === "pending"));
 }
 
 async function loadBookings() {
@@ -1096,8 +1101,8 @@ async function loadBookings() {
   return bookingsCache;
 }
 
-async function refreshPendingBookings() {
-  if (!bookingsCache.length) await loadBookings();
+async function refreshPendingBookings(forceReload = false) {
+  if (forceReload || !bookingsCache.length) await loadBookings();
   renderPendingBookings(bookingsCache.filter((booking) => booking.status === "pending"));
 }
 
@@ -1247,7 +1252,9 @@ async function initNotices() {
 
   qs<HTMLFormElement>("[data-notice-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("notices").insert({
       title: String(form.get("title")),
       body: String(form.get("body")),
@@ -1259,7 +1266,7 @@ async function initNotices() {
       setStatus("[data-notice-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-notice-status]", "通知を発行しました。");
     await renderNoticesPage();
   });
@@ -1330,7 +1337,9 @@ async function initEvents() {
 
   qs<HTMLFormElement>("[data-event-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("events").insert({
       title: String(form.get("title")),
       description: String(form.get("description") || ""),
@@ -1343,7 +1352,7 @@ async function initEvents() {
       setStatus("[data-event-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-event-status]", "行事を保存しました。");
     await renderEventsPage();
   });
@@ -1399,7 +1408,9 @@ async function initDocuments() {
 
   qs<HTMLFormElement>("[data-document-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("management_documents").insert({
       title: String(form.get("title")),
       kind: String(form.get("kind")),
@@ -1414,7 +1425,7 @@ async function initDocuments() {
       setStatus("[data-document-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     const version = qs<HTMLInputElement>("#document-version");
     if (version) version.value = "1.0";
     setStatus("[data-document-status]", "文書を審査へ回しました。");
@@ -1614,7 +1625,9 @@ async function initMaintenance() {
 
   qs<HTMLFormElement>("[data-maintenance-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("maintenance_requests").insert({
       title: String(form.get("title")),
       category: String(form.get("category")),
@@ -1628,7 +1641,7 @@ async function initMaintenance() {
       setStatus("[data-maintenance-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-maintenance-status]", "修繕依頼を受け付けました。");
     await renderMaintenancePage();
   });
@@ -1733,7 +1746,9 @@ async function initFinance() {
 
   qs<HTMLFormElement>("[data-finance-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("finance_entries").insert({
       title: String(form.get("title")),
       entry_type: String(form.get("entry_type")),
@@ -1747,7 +1762,7 @@ async function initFinance() {
       setStatus("[data-finance-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
     setStatus("[data-finance-status]", "台帳に記録しました。");
     await renderFinancePage();
@@ -1815,7 +1830,9 @@ async function initAssets() {
 
   qs<HTMLFormElement>("[data-asset-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("asset_items").insert({
       name: String(form.get("name")),
       category: String(form.get("category")),
@@ -1830,7 +1847,7 @@ async function initAssets() {
       setStatus("[data-asset-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-asset-status]", "資産を登録しました。");
     await renderAssetsPage();
   });
@@ -1909,7 +1926,9 @@ async function initVendors() {
 
   qs<HTMLFormElement>("[data-vendor-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("vendors").insert({
       name: String(form.get("name")),
       category: String(form.get("category")),
@@ -1923,14 +1942,16 @@ async function initVendors() {
       setStatus("[data-vendor-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-vendor-status]", "業者を登録しました。");
     await renderVendorsPage();
   });
 
   qs<HTMLFormElement>("[data-contract-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const endDate = String(form.get("end_date"));
     const { error } = await supabase!.from("vendor_contracts").insert({
       vendor_id: String(form.get("vendor_id")),
@@ -1945,7 +1966,7 @@ async function initVendors() {
       setStatus("[data-contract-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-contract-status]", "契約を保存しました。");
     await renderVendorsPage();
   });
@@ -2039,7 +2060,9 @@ async function initResidents() {
 
   qs<HTMLFormElement>("[data-resident-profile-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { data, error } = await supabase!
       .from("profiles")
       .update({
@@ -2125,7 +2148,9 @@ async function initSurveys() {
 
   qs<HTMLFormElement>("[data-survey-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const options = String(form.get("options"))
       .split(",")
       .map((option) => option.trim())
@@ -2148,7 +2173,7 @@ async function initSurveys() {
       setStatus("[data-survey-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-survey-status]", "意見募集を作成しました。");
     await renderSurveysPage();
   });
@@ -2252,7 +2277,9 @@ async function initSafety() {
 
   qs<HTMLFormElement>("[data-safety-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("safety_events").insert({
       title: String(form.get("title")),
       kind: String(form.get("kind")),
@@ -2266,7 +2293,7 @@ async function initSafety() {
       setStatus("[data-safety-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-safety-status]", "防災・安否イベントを登録しました。");
     await renderSafetyPage();
   });
@@ -2369,7 +2396,9 @@ async function initTasks() {
 
   qs<HTMLFormElement>("[data-task-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const assignee = String(form.get("assignee_id") || "").trim();
     const { error } = await supabase!.from("board_tasks").insert({
       title: String(form.get("title")),
@@ -2384,7 +2413,7 @@ async function initTasks() {
       setStatus("[data-task-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-task-status]", "タスクを作成しました。");
     await renderTasksPage();
   });
@@ -2462,7 +2491,9 @@ async function initParking() {
 
   qs<HTMLFormElement>("[data-parking-space-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("parking_spaces").insert({
       code: String(form.get("code")),
       kind: String(form.get("kind")),
@@ -2474,14 +2505,16 @@ async function initParking() {
       setStatus("[data-parking-space-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-parking-space-status]", "区画を登録しました。");
     await renderParkingPage();
   });
 
   qs<HTMLFormElement>("[data-parking-permit-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("parking_permits").insert({
       space_id: String(form.get("space_id")),
       user_id: currentProfile!.id,
@@ -2494,7 +2527,7 @@ async function initParking() {
       setStatus("[data-parking-permit-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-parking-permit-status]", "利用申請を送信しました。");
     await renderParkingPage();
   });
@@ -2629,7 +2662,9 @@ async function initResidentRequests() {
 
   qs<HTMLFormElement>("[data-resident-request-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("resident_requests").insert({
       title: String(form.get("title")),
       category: String(form.get("category")),
@@ -2642,7 +2677,7 @@ async function initResidentRequests() {
       setStatus("[data-resident-request-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-resident-request-status]", "相談を送信しました。");
     await renderResidentRequestsPage();
   });
@@ -2727,7 +2762,9 @@ async function initCirculars() {
 
   qs<HTMLFormElement>("[data-circular-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("circulars").insert({
       title: String(form.get("title")),
       kind: String(form.get("kind")),
@@ -2741,7 +2778,7 @@ async function initCirculars() {
       setStatus("[data-circular-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-circular-status]", "回覧を公開しました。");
     await renderCircularsPage();
   });
@@ -2853,7 +2890,9 @@ async function initLending() {
 
   qs<HTMLFormElement>("[data-lending-item-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("lending_items").insert({
       name: String(form.get("name")),
       kind: String(form.get("kind")),
@@ -2865,14 +2904,16 @@ async function initLending() {
       setStatus("[data-lending-item-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-lending-item-status]", "貸出品を登録しました。");
     await renderLendingPage();
   });
 
   qs<HTMLFormElement>("[data-lending-request-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("lending_requests").insert({
       item_id: String(form.get("item_id")),
       user_id: currentProfile!.id,
@@ -2884,7 +2925,7 @@ async function initLending() {
       setStatus("[data-lending-request-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-lending-request-status]", "貸出申請を送信しました。");
     await renderLendingPage();
   });
@@ -3030,7 +3071,9 @@ async function initDuties() {
 
   qs<HTMLFormElement>("[data-duty-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const assignee = String(form.get("assignee_id") || "").trim();
     const { error } = await supabase!.from("duty_assignments").insert({
       title: String(form.get("title")),
@@ -3046,7 +3089,7 @@ async function initDuties() {
       setStatus("[data-duty-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-duty-status]", "当番を作成しました。");
     await renderDutiesPage();
   });
@@ -3136,7 +3179,9 @@ async function initWaste() {
 
   qs<HTMLFormElement>("[data-waste-schedule-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("waste_schedules").insert({
       title: String(form.get("title")),
       category: String(form.get("category")),
@@ -3149,14 +3194,16 @@ async function initWaste() {
       setStatus("[data-waste-schedule-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-waste-schedule-status]", "収集ルールを登録しました。");
     await renderWastePage();
   });
 
   qs<HTMLFormElement>("[data-bulky-request-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("bulky_waste_requests").insert({
       user_id: currentProfile!.id,
       item_name: String(form.get("item_name")),
@@ -3169,7 +3216,7 @@ async function initWaste() {
       setStatus("[data-bulky-request-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-bulky-request-status]", "粗大ごみ申請を送信しました。");
     await renderWastePage();
   });
@@ -3281,7 +3328,9 @@ async function initMeetings() {
 
   qs<HTMLFormElement>("[data-meeting-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("meeting_sessions").insert({
       title: String(form.get("title")),
       kind: String(form.get("kind")),
@@ -3295,14 +3344,16 @@ async function initMeetings() {
       setStatus("[data-meeting-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-meeting-status]", "会議を公開しました。");
     await renderMeetingsPage();
   });
 
   qs<HTMLFormElement>("[data-agenda-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("meeting_agenda_items").insert({
       meeting_id: String(form.get("meeting_id")),
       title: String(form.get("title")),
@@ -3314,14 +3365,16 @@ async function initMeetings() {
       setStatus("[data-agenda-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-agenda-status]", "議案を追加しました。");
     await renderMeetingsPage();
   });
 
   qs<HTMLFormElement>("[data-attendance-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("meeting_attendances").upsert(
       {
         meeting_id: String(form.get("meeting_id")),
@@ -3342,7 +3395,9 @@ async function initMeetings() {
 
   qs<HTMLFormElement>("[data-vote-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("meeting_votes").upsert(
       {
         agenda_item_id: String(form.get("agenda_item_id")),
@@ -3493,7 +3548,9 @@ async function initInspections() {
 
   qs<HTMLFormElement>("[data-inspection-plan-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("inspection_plans").insert({
       asset_id: String(form.get("asset_id")),
       title: String(form.get("title")),
@@ -3506,14 +3563,16 @@ async function initInspections() {
       setStatus("[data-inspection-plan-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-inspection-plan-status]", "点検計画を作成しました。");
     await renderInspectionsPage();
   });
 
   qs<HTMLFormElement>("[data-inspection-record-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const planId = String(form.get("plan_id"));
     const result = String(form.get("result")) as InspectionResult;
     const plan = inspectionPlansCache.find((item) => item.id === planId);
@@ -3560,7 +3619,7 @@ async function initInspections() {
     if (result === "repair_needed") {
       await supabase!.from("asset_items").update({ status: "repair_needed", managed_by: currentProfile!.id }).eq("id", plan.asset_id);
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-inspection-record-status]", "点検記録を登録しました。");
     await renderInspectionsPage();
   });
@@ -3664,7 +3723,9 @@ async function initAdmin() {
 
   qs<HTMLFormElement>("[data-room-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
     const { error } = await supabase!.from("rooms").insert({
       name: String(form.get("name")),
       capacity: Number(form.get("capacity") || 0),
@@ -3675,7 +3736,7 @@ async function initAdmin() {
       setStatus("[data-room-status]", error.message, true);
       return;
     }
-    event.currentTarget.reset();
+    formElement.reset();
     setStatus("[data-room-status]", "会議室を追加しました。");
     await renderAdminRooms();
   });
