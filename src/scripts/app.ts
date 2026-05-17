@@ -126,6 +126,50 @@ type FinanceEntry = {
   profiles?: Pick<Profile, "display_name"> | null;
 };
 
+type AssetCategory = "equipment" | "fixture" | "disaster" | "document" | "other";
+type AssetStatus = "active" | "inspection_due" | "repair_needed" | "retired";
+type ContractStatus = "active" | "renewal_due" | "expired" | "terminated";
+
+type AssetItem = {
+  id: string;
+  name: string;
+  category: AssetCategory;
+  status: AssetStatus;
+  location: string;
+  inspection_due_at: string | null;
+  note: string | null;
+  managed_by: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type Vendor = {
+  id: string;
+  name: string;
+  category: string;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type VendorContract = {
+  id: string;
+  vendor_id: string;
+  title: string;
+  status: ContractStatus;
+  start_date: string;
+  end_date: string;
+  amount: number | null;
+  created_by: string;
+  vendors?: Pick<Vendor, "name"> | null;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -136,6 +180,8 @@ let bookingsCache: Booking[] = [];
 let documentFilter: DocumentStatus | "all" = "all";
 let maintenanceFilter: MaintenanceStatus | "all" = "all";
 let financeFilter: FinanceEntryType | "all" = "all";
+let assetFilter: AssetStatus | "all" = "all";
+let vendorsCache: Vendor[] = [];
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -195,6 +241,28 @@ const maintenanceStatusLabels: Record<MaintenanceStatus, string> = {
 const financeTypeLabels: Record<FinanceEntryType, string> = {
   income: "収入",
   expense: "支出",
+};
+
+const assetCategoryLabels: Record<AssetCategory, string> = {
+  equipment: "設備",
+  fixture: "備品",
+  disaster: "防災",
+  document: "書類",
+  other: "その他",
+};
+
+const assetStatusLabels: Record<AssetStatus, string> = {
+  active: "利用中",
+  inspection_due: "点検予定",
+  repair_needed: "修理必要",
+  retired: "廃止",
+};
+
+const contractStatusLabels: Record<ContractStatus, string> = {
+  active: "有効",
+  renewal_due: "更新注意",
+  expired: "期限切れ",
+  terminated: "終了",
 };
 
 const roomPalette = ["#176b5b", "#3f6fb5", "#9a5b13", "#7c3aed", "#be3455", "#2f7d32"];
@@ -319,6 +387,8 @@ async function init() {
   if (page === "documents") await initDocuments();
   if (page === "maintenance") await initMaintenance();
   if (page === "finance") await initFinance();
+  if (page === "assets") await initAssets();
+  if (page === "vendors") await initVendors();
   if (page === "admin") await initAdmin();
 }
 
@@ -890,7 +960,7 @@ async function initDocuments() {
 async function renderDocumentsPage() {
   let query = supabase!
     .from("management_documents")
-    .select("*, profiles(display_name)")
+    .select("*")
     .order("updated_at", { ascending: false });
 
   if (documentFilter !== "all") query = query.eq("status", documentFilter);
@@ -1102,7 +1172,7 @@ async function initMaintenance() {
 async function renderMaintenancePage() {
   let query = supabase!
     .from("maintenance_requests")
-    .select("*, profiles(display_name)")
+    .select("*")
     .order("updated_at", { ascending: false });
 
   if (maintenanceFilter !== "all") query = query.eq("status", maintenanceFilter);
@@ -1264,6 +1334,240 @@ function renderFinanceList(entries: FinanceEntry[]) {
     .join("");
 }
 
+async function initAssets() {
+  qs("[data-asset-form]")?.classList.toggle("hidden", !canManage());
+  await renderAssetsPage();
+
+  qsa<HTMLButtonElement>("[data-asset-filter]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      assetFilter = (button.dataset.assetFilter as AssetStatus | "all") ?? "all";
+      qsa<HTMLButtonElement>("[data-asset-filter]").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      await renderAssetsPage();
+    });
+  });
+
+  qs<HTMLFormElement>("[data-asset-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("asset_items").insert({
+      name: String(form.get("name")),
+      category: String(form.get("category")),
+      status: String(form.get("status")),
+      location: String(form.get("location")),
+      inspection_due_at: String(form.get("inspection_due_at") || "") || null,
+      note: String(form.get("note") || "") || null,
+      managed_by: currentProfile!.id,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-asset-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-asset-status]", "資産を登録しました。");
+    await renderAssetsPage();
+  });
+}
+
+async function renderAssetsPage() {
+  let query = supabase!.from("asset_items").select("*").order("updated_at", { ascending: false });
+  if (assetFilter !== "all") query = query.eq("status", assetFilter);
+  const { data } = await query;
+  const assets = (data ?? []) as AssetItem[];
+  const today = new Date().toISOString().slice(0, 10);
+
+  setText("[data-metric='asset-total']", String(assets.length));
+  setText("[data-metric='asset-due']", String(assets.filter((asset) => asset.inspection_due_at && asset.inspection_due_at <= today).length));
+  setText("[data-metric='asset-attention']", String(assets.filter((asset) => asset.status === "repair_needed").length));
+  renderAssetList(assets);
+}
+
+function renderAssetList(assets: AssetItem[]) {
+  const container = qs("[data-asset-list]");
+  if (!container) return;
+  if (!assets.length) {
+    container.innerHTML = `<p class="meta">資産はありません。</p>`;
+    return;
+  }
+  container.innerHTML = assets
+    .map(
+      (asset) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(asset.name)}</strong>
+              <p class="meta">${assetCategoryLabels[asset.category]} / ${escapeHtml(asset.location)}${asset.inspection_due_at ? ` / 点検 ${escapeHtml(asset.inspection_due_at)}` : ""}</p>
+            </div>
+            ${assetStatusBadge(asset.status)}
+          </div>
+          ${asset.note ? `<p>${escapeHtml(asset.note)}</p>` : ""}
+          ${
+            canManage()
+              ? `<div class="toolbar">
+                  <button class="button secondary" type="button" data-asset-inspection="${asset.id}">点検予定</button>
+                  <button class="button danger" type="button" data-asset-repair="${asset.id}">修理必要</button>
+                  <button class="button" type="button" data-asset-active="${asset.id}">利用中</button>
+                </div>`
+              : ""
+          }
+        </article>
+      `,
+    )
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-asset-inspection]").forEach((button) => {
+    button.addEventListener("click", () => updateAssetStatus(button.dataset.assetInspection!, "inspection_due"));
+  });
+  qsa<HTMLButtonElement>("[data-asset-repair]").forEach((button) => {
+    button.addEventListener("click", () => updateAssetStatus(button.dataset.assetRepair!, "repair_needed"));
+  });
+  qsa<HTMLButtonElement>("[data-asset-active]").forEach((button) => {
+    button.addEventListener("click", () => updateAssetStatus(button.dataset.assetActive!, "active"));
+  });
+}
+
+async function updateAssetStatus(id: string, status: AssetStatus) {
+  const { error } = await supabase!.from("asset_items").update({ status, managed_by: currentProfile!.id }).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderAssetsPage();
+}
+
+async function initVendors() {
+  qs("[data-vendor-form]")?.classList.toggle("hidden", !canManage());
+  qs("[data-contract-form]")?.classList.toggle("hidden", !canManage());
+  await renderVendorsPage();
+
+  qs<HTMLFormElement>("[data-vendor-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("vendors").insert({
+      name: String(form.get("name")),
+      category: String(form.get("category")),
+      contact_name: String(form.get("contact_name") || "") || null,
+      phone: String(form.get("phone") || "") || null,
+      email: String(form.get("email") || "") || null,
+      note: String(form.get("note") || "") || null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-vendor-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-vendor-status]", "業者を登録しました。");
+    await renderVendorsPage();
+  });
+
+  qs<HTMLFormElement>("[data-contract-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const endDate = String(form.get("end_date"));
+    const { error } = await supabase!.from("vendor_contracts").insert({
+      vendor_id: String(form.get("vendor_id")),
+      title: String(form.get("title")),
+      start_date: String(form.get("start_date")),
+      end_date: endDate,
+      amount: form.get("amount") ? Number(form.get("amount")) : null,
+      status: contractStatusFromEndDate(endDate),
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-contract-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-contract-status]", "契約を保存しました。");
+    await renderVendorsPage();
+  });
+}
+
+async function renderVendorsPage() {
+  const [{ data: vendors }, { data: contracts }] = await Promise.all([
+    supabase!.from("vendors").select("*").order("name"),
+    supabase!.from("vendor_contracts").select("*, vendors(name)").order("end_date", { ascending: true }),
+  ]);
+  vendorsCache = (vendors ?? []) as Vendor[];
+  const contractItems = (contracts ?? []) as VendorContract[];
+  setText("[data-metric='vendor-total']", String(vendorsCache.length));
+  setText("[data-metric='contract-active']", String(contractItems.filter((contract) => contract.status === "active").length));
+  setText("[data-metric='contract-renewal']", String(contractItems.filter((contract) => contract.status === "renewal_due").length));
+  renderVendorSelect();
+  renderVendorList(vendorsCache);
+  renderContractList(contractItems);
+}
+
+function renderVendorSelect() {
+  const select = qs<HTMLSelectElement>("[data-contract-vendor-select]");
+  if (!select) return;
+  select.innerHTML = vendorsCache.map((vendor) => `<option value="${vendor.id}">${escapeHtml(vendor.name)}</option>`).join("");
+}
+
+function renderVendorList(vendors: Vendor[]) {
+  const container = qs("[data-vendor-list]");
+  if (!container) return;
+  if (!vendors.length) {
+    container.innerHTML = `<p class="meta">業者はありません。</p>`;
+    return;
+  }
+  container.innerHTML = vendors
+    .map(
+      (vendor) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(vendor.name)}</strong>
+              <p class="meta">${escapeHtml(vendor.category)}${vendor.contact_name ? ` / ${escapeHtml(vendor.contact_name)}` : ""}</p>
+            </div>
+            <span class="badge ${vendor.is_active ? "success" : "danger"}">${vendor.is_active ? "有効" : "停止"}</span>
+          </div>
+          <p class="meta">${[vendor.phone, vendor.email].filter(Boolean).map(escapeHtml).join(" / ") || "連絡先未登録"}</p>
+          ${vendor.note ? `<p>${escapeHtml(vendor.note)}</p>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderContractList(contracts: VendorContract[]) {
+  const container = qs("[data-contract-list]");
+  if (!container) return;
+  if (!contracts.length) {
+    container.innerHTML = `<p class="meta">契約はありません。</p>`;
+    return;
+  }
+  container.innerHTML = contracts
+    .map(
+      (contract) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(contract.title)}</strong>
+              <p class="meta">${escapeHtml(contract.vendors?.name ?? "業者")} / ${escapeHtml(contract.start_date)} - ${escapeHtml(contract.end_date)}</p>
+            </div>
+            ${contractStatusBadge(contract.status)}
+          </div>
+          <p class="meta">契約金額 ${contract.amount == null ? "-" : formatCurrency(contract.amount)}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function contractStatusFromEndDate(endDate: string): ContractStatus {
+  const end = new Date(`${endDate}T00:00:00`);
+  const now = new Date();
+  const renewalThreshold = new Date();
+  renewalThreshold.setDate(now.getDate() + 60);
+  if (end < now) return "expired";
+  if (end <= renewalThreshold) return "renewal_due";
+  return "active";
+}
+
 async function initAdmin() {
   if (!isAdmin()) {
     qs(".main")!.innerHTML = `<section class="panel"><h1>アクセス権限がありません</h1><p class="meta">管理者のみ利用できます。</p></section>`;
@@ -1413,6 +1717,16 @@ function documentStatusBadge(status: DocumentStatus) {
 function maintenanceStatusBadge(status: MaintenanceStatus) {
   const className = status === "resolved" || status === "closed" ? "success" : status === "open" ? "warning" : "";
   return `<span class="badge ${className}">${maintenanceStatusLabels[status]}</span>`;
+}
+
+function assetStatusBadge(status: AssetStatus) {
+  const className = status === "active" ? "success" : status === "inspection_due" ? "warning" : "danger";
+  return `<span class="badge ${className}">${assetStatusLabels[status]}</span>`;
+}
+
+function contractStatusBadge(status: ContractStatus) {
+  const className = status === "active" ? "success" : status === "renewal_due" ? "warning" : "danger";
+  return `<span class="badge ${className}">${contractStatusLabels[status]}</span>`;
 }
 
 void init();

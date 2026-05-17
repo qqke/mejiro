@@ -1,0 +1,86 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Boxes, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="資産台帳" page="assets">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Assets</p>
+      <h1>資産台帳</h1>
+      <p class="lead">共用設備、備品、防災用品などの保有状況、点検予定、状態を管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="資産指標">
+    <div class="panel metric">
+      <span>登録資産</span>
+      <strong data-metric="asset-total">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>点検予定</span>
+      <strong data-metric="asset-due">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>要対応</span>
+      <strong data-metric="asset-attention">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-asset-form>
+      <h2><Plus size={18} aria-hidden="true" /> 資産を登録</h2>
+      <div class="field">
+        <label for="asset-name">名称</label>
+        <input class="input" id="asset-name" name="name" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="asset-category">分類</label>
+          <select class="select" id="asset-category" name="category">
+            <option value="equipment">設備</option>
+            <option value="fixture">備品</option>
+            <option value="disaster">防災</option>
+            <option value="document">書類</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="asset-status">状態</label>
+          <select class="select" id="asset-status" name="status">
+            <option value="active">利用中</option>
+            <option value="inspection_due">点検予定</option>
+            <option value="repair_needed">修理必要</option>
+            <option value="retired">廃止</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="asset-location">保管場所</label>
+          <input class="input" id="asset-location" name="location" required />
+        </div>
+        <div class="field">
+          <label for="asset-inspection-due">次回点検</label>
+          <input class="input" id="asset-inspection-due" name="inspection_due_at" type="date" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="asset-note">備考</label>
+        <textarea class="textarea" id="asset-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">登録する</button>
+      <p class="status" data-asset-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><Boxes size={18} aria-hidden="true" /> 資産一覧</h2>
+      <div class="asset-filters segmented" aria-label="資産フィルター">
+        <button class="segment active" type="button" data-asset-filter="all">全体</button>
+        <button class="segment" type="button" data-asset-filter="inspection_due">点検</button>
+        <button class="segment" type="button" data-asset-filter="repair_needed">修理</button>
+      </div>
+      <div class="list" data-asset-list></div>
+    </div>
+  </section>
+</AppLayout>

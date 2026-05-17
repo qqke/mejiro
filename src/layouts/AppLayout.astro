@@ -2,6 +2,7 @@
 import "../styles/global.css";
 import {
   Bell,
+  Boxes,
   Building2,
   CalendarDays,
   ClipboardList,
@@ -10,13 +11,14 @@ import {
   Home,
   LogOut,
   Settings,
+  Store,
   Wrench,
 } from "@lucide/astro";
 
 type Props = {
   title: string;
   description?: string;
-  page: "home" | "rooms" | "notices" | "events" | "documents" | "maintenance" | "finance" | "admin";
+  page: "home" | "rooms" | "notices" | "events" | "documents" | "maintenance" | "finance" | "assets" | "vendors" | "admin";
 };
 
 const { title, description = "団地管理組合電子化システム", page } = Astro.props;
@@ -31,6 +33,8 @@ const navItems = [
   { href: asset("/documents/"), label: "管理文書", page: "documents", icon: FileText },
   { href: asset("/maintenance/"), label: "修繕工事", page: "maintenance", icon: Wrench },
   { href: asset("/finance/"), label: "収支台帳", page: "finance", icon: HandCoins },
+  { href: asset("/assets/"), label: "資産台帳", page: "assets", icon: Boxes },
+  { href: asset("/vendors/"), label: "業者契約", page: "vendors", icon: Store },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

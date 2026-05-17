@@ -14,6 +14,9 @@ create type public.maintenance_category as enum ('common_area', 'equipment', 'sa
 create type public.maintenance_priority as enum ('normal', 'high', 'urgent');
 create type public.maintenance_status as enum ('open', 'in_progress', 'resolved', 'closed');
 create type public.finance_entry_type as enum ('income', 'expense');
+create type public.asset_category as enum ('equipment', 'fixture', 'disaster', 'document', 'other');
+create type public.asset_status as enum ('active', 'inspection_due', 'repair_needed', 'retired');
+create type public.contract_status as enum ('active', 'renewal_due', 'expired', 'terminated');
 
 create schema if not exists app_private;
 
@@ -145,6 +148,48 @@ create table public.finance_entries (
   updated_at timestamptz not null default now()
 );
 
+create table public.asset_items (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  category public.asset_category not null default 'other',
+  status public.asset_status not null default 'active',
+  location text not null,
+  inspection_due_at date,
+  note text,
+  managed_by uuid references public.profiles(id),
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.vendors (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  category text not null,
+  contact_name text,
+  phone text,
+  email text,
+  note text,
+  is_active boolean not null default true,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.vendor_contracts (
+  id uuid primary key default gen_random_uuid(),
+  vendor_id uuid not null references public.vendors(id) on delete cascade,
+  title text not null,
+  status public.contract_status not null default 'active',
+  start_date date not null,
+  end_date date not null,
+  amount integer check (amount is null or amount >= 0),
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint vendor_contract_time_order check (end_date >= start_date)
+);
+
 create or replace function app_private.has_role(required_roles public.app_role[])
 returns boolean
 language sql
@@ -208,6 +253,18 @@ create trigger finance_set_updated_at
 before update on public.finance_entries
 for each row execute function public.set_updated_at();
 
+create trigger assets_set_updated_at
+before update on public.asset_items
+for each row execute function public.set_updated_at();
+
+create trigger vendors_set_updated_at
+before update on public.vendors
+for each row execute function public.set_updated_at();
+
+create trigger vendor_contracts_set_updated_at
+before update on public.vendor_contracts
+for each row execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.room_bookings enable row level security;
@@ -219,6 +276,9 @@ alter table public.document_approvals enable row level security;
 alter table public.document_seals enable row level security;
 alter table public.maintenance_requests enable row level security;
 alter table public.finance_entries enable row level security;
+alter table public.asset_items enable row level security;
+alter table public.vendors enable row level security;
+alter table public.vendor_contracts enable row level security;
 
 create policy "profiles_select_own_or_manager"
 on public.profiles for select
@@ -387,6 +447,54 @@ with check (created_by = auth.uid() and app_private.has_role(array['board_member
 
 create policy "finance_manager_update"
 on public.finance_entries for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "assets_select_authenticated"
+on public.asset_items for select
+to authenticated
+using (true);
+
+create policy "assets_manager_insert"
+on public.asset_items for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "assets_manager_update"
+on public.asset_items for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "vendors_select_authenticated"
+on public.vendors for select
+to authenticated
+using (true);
+
+create policy "vendors_manager_insert"
+on public.vendors for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "vendors_manager_update"
+on public.vendors for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "vendor_contracts_select_authenticated"
+on public.vendor_contracts for select
+to authenticated
+using (true);
+
+create policy "vendor_contracts_manager_insert"
+on public.vendor_contracts for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "vendor_contracts_manager_update"
+on public.vendor_contracts for update
 to authenticated
 using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
 with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
