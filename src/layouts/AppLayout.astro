@@ -47,6 +47,8 @@ type Props = {
     | "lending"
     | "duties"
     | "waste"
+    | "meetings"
+    | "inspections"
     | "admin";
 };
 
@@ -74,6 +76,8 @@ const navItems = [
   { href: asset("/lending/"), label: "鍵貸出", page: "lending", icon: KeyRound },
   { href: asset("/duties/"), label: "当番巡回", page: "duties", icon: ClipboardList },
   { href: asset("/waste/"), label: "ごみ資源", page: "waste", icon: Recycle },
+  { href: asset("/meetings/"), label: "会議治理", page: "meetings", icon: Vote },
+  { href: asset("/inspections/"), label: "長期点検", page: "inspections", icon: ClipboardCheck },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

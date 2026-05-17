@@ -245,6 +245,12 @@ type DutyKind = "cleaning" | "patrol" | "meeting" | "garden" | "other";
 type DutyStatus = "planned" | "done" | "missed" | "cancelled";
 type WasteCategory = "burnable" | "non_burnable" | "recycle" | "oversized" | "hazardous" | "other";
 type BulkyWasteStatus = "submitted" | "scheduled" | "completed" | "cancelled";
+type MeetingKind = "board" | "general" | "committee" | "other";
+type MeetingStatus = "open" | "closed" | "cancelled";
+type MeetingAttendanceStatus = "attending" | "proxy" | "absent";
+type MeetingVoteChoice = "approve" | "reject" | "abstain";
+type InspectionFrequency = "monthly" | "quarterly" | "semiannual" | "annual" | "ad_hoc";
+type InspectionResult = "ok" | "watch" | "repair_needed" | "retired";
 
 type ParkingSpace = {
   id: string;
@@ -370,6 +376,82 @@ type BulkyWasteRequest = {
   updated_at: string;
 };
 
+type MeetingSession = {
+  id: string;
+  title: string;
+  kind: MeetingKind;
+  status: MeetingStatus;
+  scheduled_at: string;
+  location: string | null;
+  note: string | null;
+  created_by: string;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type MeetingAgendaItem = {
+  id: string;
+  meeting_id: string;
+  title: string;
+  description: string;
+  sort_order: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  meeting_sessions?: Pick<MeetingSession, "title" | "status"> | null;
+};
+
+type MeetingAttendance = {
+  id: string;
+  meeting_id: string;
+  user_id: string;
+  status: MeetingAttendanceStatus;
+  proxy_to: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type MeetingVote = {
+  id: string;
+  agenda_item_id: string;
+  user_id: string;
+  choice: MeetingVoteChoice;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type InspectionPlan = {
+  id: string;
+  asset_id: string;
+  title: string;
+  frequency: InspectionFrequency;
+  next_due_date: string;
+  note: string | null;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  asset_items?: Pick<AssetItem, "name" | "location" | "status"> | null;
+};
+
+type InspectionRecord = {
+  id: string;
+  plan_id: string;
+  asset_id: string;
+  inspected_by: string;
+  result: InspectionResult;
+  inspected_at: string;
+  note: string;
+  maintenance_request_id: string | null;
+  created_at: string;
+  updated_at: string;
+  inspection_plans?: Pick<InspectionPlan, "title"> | null;
+  asset_items?: Pick<AssetItem, "name"> | null;
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -387,6 +469,10 @@ let parkingSpacesCache: ParkingSpace[] = [];
 let residentRequestFilter: ResidentRequestStatus | "all" = "all";
 let lendingItemsCache: LendingItem[] = [];
 let dutyFilter: DutyStatus | "all" = "all";
+let meetingSessionsCache: MeetingSession[] = [];
+let meetingAgendaCache: MeetingAgendaItem[] = [];
+let inspectionPlansCache: InspectionPlan[] = [];
+let inspectionAssetsCache: AssetItem[] = [];
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -589,6 +675,46 @@ const bulkyWasteStatusLabels: Record<BulkyWasteStatus, string> = {
   cancelled: "取消",
 };
 
+const meetingKindLabels: Record<MeetingKind, string> = {
+  board: "理事会",
+  general: "総会",
+  committee: "委員会",
+  other: "その他",
+};
+
+const meetingStatusLabels: Record<MeetingStatus, string> = {
+  open: "公開中",
+  closed: "終了",
+  cancelled: "中止",
+};
+
+const meetingAttendanceStatusLabels: Record<MeetingAttendanceStatus, string> = {
+  attending: "出席",
+  proxy: "委任",
+  absent: "欠席",
+};
+
+const meetingVoteChoiceLabels: Record<MeetingVoteChoice, string> = {
+  approve: "賛成",
+  reject: "反対",
+  abstain: "棄権",
+};
+
+const inspectionFrequencyLabels: Record<InspectionFrequency, string> = {
+  monthly: "毎月",
+  quarterly: "四半期",
+  semiannual: "半年",
+  annual: "年次",
+  ad_hoc: "随時",
+};
+
+const inspectionResultLabels: Record<InspectionResult, string> = {
+  ok: "異常なし",
+  watch: "経過観察",
+  repair_needed: "修理必要",
+  retired: "廃止",
+};
+
 const roomPalette = ["#176b5b", "#3f6fb5", "#9a5b13", "#7c3aed", "#be3455", "#2f7d32"];
 
 const statusColors: Record<BookingStatus, { background: string; border: string; text: string }> = {
@@ -723,6 +849,8 @@ async function init() {
   if (page === "lending") await initLending();
   if (page === "duties") await initDuties();
   if (page === "waste") await initWaste();
+  if (page === "meetings") await initMeetings();
+  if (page === "inspections") await initInspections();
   if (page === "admin") await initAdmin();
 }
 
@@ -3146,6 +3274,386 @@ async function updateBulkyWasteStatus(id: string, status: BulkyWasteStatus) {
   await renderWastePage();
 }
 
+async function initMeetings() {
+  qs("[data-meeting-form]")?.classList.toggle("hidden", !canManage());
+  qs("[data-agenda-form]")?.classList.toggle("hidden", !canManage());
+  await renderMeetingsPage();
+
+  qs<HTMLFormElement>("[data-meeting-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("meeting_sessions").insert({
+      title: String(form.get("title")),
+      kind: String(form.get("kind")),
+      scheduled_at: new Date(String(form.get("scheduled_at"))).toISOString(),
+      location: String(form.get("location") || "") || null,
+      note: String(form.get("note") || "") || null,
+      status: "open",
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-meeting-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-meeting-status]", "会議を公開しました。");
+    await renderMeetingsPage();
+  });
+
+  qs<HTMLFormElement>("[data-agenda-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("meeting_agenda_items").insert({
+      meeting_id: String(form.get("meeting_id")),
+      title: String(form.get("title")),
+      description: String(form.get("description")),
+      sort_order: Number(form.get("sort_order") || 0),
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-agenda-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-agenda-status]", "議案を追加しました。");
+    await renderMeetingsPage();
+  });
+
+  qs<HTMLFormElement>("[data-attendance-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("meeting_attendances").upsert(
+      {
+        meeting_id: String(form.get("meeting_id")),
+        user_id: currentProfile!.id,
+        status: String(form.get("status")),
+        proxy_to: String(form.get("proxy_to") || "") || null,
+        note: String(form.get("note") || "") || null,
+      },
+      { onConflict: "meeting_id,user_id" },
+    );
+    if (error) {
+      setStatus("[data-attendance-status]", error.message, true);
+      return;
+    }
+    setStatus("[data-attendance-status]", "出席・委任を登録しました。");
+    await renderMeetingsPage();
+  });
+
+  qs<HTMLFormElement>("[data-vote-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("meeting_votes").upsert(
+      {
+        agenda_item_id: String(form.get("agenda_item_id")),
+        user_id: currentProfile!.id,
+        choice: String(form.get("choice")),
+        comment: String(form.get("comment") || "") || null,
+      },
+      { onConflict: "agenda_item_id,user_id" },
+    );
+    if (error) {
+      setStatus("[data-vote-status]", error.message, true);
+      return;
+    }
+    setStatus("[data-vote-status]", "投票を登録しました。");
+    await renderMeetingsPage();
+  });
+}
+
+async function renderMeetingsPage() {
+  const [{ data: sessions }, { data: agendaItems }, { data: attendances }, { data: votes }] = await Promise.all([
+    supabase!.from("meeting_sessions").select("*").order("scheduled_at", { ascending: false }),
+    supabase!.from("meeting_agenda_items").select("*, meeting_sessions(title, status)").order("sort_order").order("created_at"),
+    supabase!.from("meeting_attendances").select("*").order("created_at", { ascending: false }),
+    supabase!.from("meeting_votes").select("*").order("created_at", { ascending: false }),
+  ]);
+  meetingSessionsCache = (sessions ?? []) as MeetingSession[];
+  meetingAgendaCache = (agendaItems ?? []) as MeetingAgendaItem[];
+  const meetingAttendances = (attendances ?? []) as MeetingAttendance[];
+  const meetingVotes = (votes ?? []) as MeetingVote[];
+  setText("[data-metric='meeting-open']", String(meetingSessionsCache.filter((meeting) => meeting.status === "open").length));
+  setText("[data-metric='meeting-agendas']", String(meetingAgendaCache.length));
+  setText("[data-metric='meeting-attendance']", String(meetingAttendances.length));
+  renderMeetingSelects(meetingSessionsCache, meetingAgendaCache);
+  renderMeetingList(meetingSessionsCache, meetingAttendances);
+  renderAgendaList(meetingAgendaCache, meetingVotes);
+}
+
+function renderMeetingSelects(sessions: MeetingSession[], agendaItems: MeetingAgendaItem[]) {
+  const openSessions = sessions.filter((session) => session.status === "open");
+  const openAgendaItems = agendaItems.filter((item) => item.meeting_sessions?.status === "open");
+  const meetingOptions = openSessions.length
+    ? openSessions.map((session) => `<option value="${session.id}">${escapeHtml(session.title)}</option>`).join("")
+    : `<option value="">公開中の会議はありません</option>`;
+  ["[data-agenda-meeting-select]", "[data-attendance-meeting-select]"].forEach((selector) => {
+    const select = qs<HTMLSelectElement>(selector);
+    if (!select) return;
+    select.disabled = openSessions.length === 0;
+    select.innerHTML = meetingOptions;
+  });
+
+  const agendaSelect = qs<HTMLSelectElement>("[data-vote-agenda-select]");
+  if (agendaSelect) {
+    agendaSelect.disabled = openAgendaItems.length === 0;
+    agendaSelect.innerHTML = openAgendaItems.length
+      ? openAgendaItems.map((item) => `<option value="${item.id}">${escapeHtml(item.meeting_sessions?.title ?? "会議")} / ${escapeHtml(item.title)}</option>`).join("")
+      : `<option value="">投票可能な議案はありません</option>`;
+  }
+}
+
+function renderMeetingList(sessions: MeetingSession[], attendances: MeetingAttendance[]) {
+  const container = qs("[data-meeting-list]");
+  if (!container) return;
+  if (!sessions.length) {
+    container.innerHTML = `<p class="meta">会議はありません。</p>`;
+    return;
+  }
+  container.innerHTML = sessions
+    .map((session) => {
+      const related = attendances.filter((attendance) => attendance.meeting_id === session.id);
+      const attending = related.filter((attendance) => attendance.status === "attending").length;
+      const proxy = related.filter((attendance) => attendance.status === "proxy").length;
+      return `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(session.title)}</strong>
+              <p class="meta">${meetingKindLabels[session.kind]} / ${formatDateTime(session.scheduled_at)}${session.location ? ` / ${escapeHtml(session.location)}` : ""}</p>
+            </div>
+            ${meetingStatusBadge(session.status)}
+          </div>
+          ${session.note ? `<p>${escapeHtml(session.note)}</p>` : ""}
+          <p class="meta">出席 ${attending} / 委任 ${proxy}</p>
+          ${
+            canManage() && session.status === "open"
+              ? `<div class="toolbar">
+                  <button class="button" type="button" data-meeting-close="${session.id}">終了</button>
+                  <button class="button danger" type="button" data-meeting-cancel="${session.id}">中止</button>
+                </div>`
+              : ""
+          }
+        </article>
+      `;
+    })
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-meeting-close]").forEach((button) => {
+    button.addEventListener("click", () => updateMeetingStatus(button.dataset.meetingClose!, "closed"));
+  });
+  qsa<HTMLButtonElement>("[data-meeting-cancel]").forEach((button) => {
+    button.addEventListener("click", () => updateMeetingStatus(button.dataset.meetingCancel!, "cancelled"));
+  });
+}
+
+function renderAgendaList(agendaItems: MeetingAgendaItem[], votes: MeetingVote[]) {
+  const container = qs("[data-agenda-list]");
+  if (!container) return;
+  if (!agendaItems.length) {
+    container.innerHTML = `<p class="meta">議案はありません。</p>`;
+    return;
+  }
+  container.innerHTML = agendaItems
+    .map((item) => {
+      const related = votes.filter((vote) => vote.agenda_item_id === item.id);
+      const approve = related.filter((vote) => vote.choice === "approve").length;
+      const reject = related.filter((vote) => vote.choice === "reject").length;
+      const abstain = related.filter((vote) => vote.choice === "abstain").length;
+      return `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(item.title)}</strong>
+              <p class="meta">${escapeHtml(item.meeting_sessions?.title ?? "会議")} / 表示順 ${item.sort_order}</p>
+            </div>
+            <span class="badge ${item.meeting_sessions?.status === "open" ? "warning" : "success"}">${item.meeting_sessions?.status === "open" ? "投票中" : "集計"}</span>
+          </div>
+          <p>${escapeHtml(item.description)}</p>
+          <p class="meta">賛成 ${approve} / 反対 ${reject} / 棄権 ${abstain}</p>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+async function updateMeetingStatus(id: string, status: MeetingStatus) {
+  const patch: Record<string, string | null> = { status, closed_at: status === "closed" ? new Date().toISOString() : null };
+  const { error } = await supabase!.from("meeting_sessions").update(patch).eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+  await renderMeetingsPage();
+}
+
+async function initInspections() {
+  qs("[data-inspection-plan-form]")?.classList.toggle("hidden", !canManage());
+  qs("[data-inspection-record-form]")?.classList.toggle("hidden", !canManage());
+  await renderInspectionsPage();
+
+  qs<HTMLFormElement>("[data-inspection-plan-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const { error } = await supabase!.from("inspection_plans").insert({
+      asset_id: String(form.get("asset_id")),
+      title: String(form.get("title")),
+      frequency: String(form.get("frequency")),
+      next_due_date: String(form.get("next_due_date")),
+      note: String(form.get("note") || "") || null,
+      created_by: currentProfile!.id,
+    });
+    if (error) {
+      setStatus("[data-inspection-plan-status]", error.message, true);
+      return;
+    }
+    event.currentTarget.reset();
+    setStatus("[data-inspection-plan-status]", "点検計画を作成しました。");
+    await renderInspectionsPage();
+  });
+
+  qs<HTMLFormElement>("[data-inspection-record-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const planId = String(form.get("plan_id"));
+    const result = String(form.get("result")) as InspectionResult;
+    const plan = inspectionPlansCache.find((item) => item.id === planId);
+    if (!plan) {
+      setStatus("[data-inspection-record-status]", "点検計画を確認できませんでした。", true);
+      return;
+    }
+    const note = String(form.get("note"));
+    let maintenanceRequestId: string | null = null;
+    if (result === "repair_needed") {
+      const { data: maintenance, error: maintenanceError } = await supabase!
+        .from("maintenance_requests")
+        .insert({
+          title: `点検異常: ${plan.title}`,
+          category: "equipment",
+          priority: "high",
+          status: "open",
+          location: plan.asset_items?.location ?? "共用部",
+          description: note,
+          requester_id: currentProfile!.id,
+        })
+        .select("id")
+        .single();
+      if (maintenanceError) {
+        setStatus("[data-inspection-record-status]", maintenanceError.message, true);
+        return;
+      }
+      maintenanceRequestId = maintenance?.id ?? null;
+    }
+
+    const { error } = await supabase!.from("inspection_records").insert({
+      plan_id: plan.id,
+      asset_id: plan.asset_id,
+      inspected_by: currentProfile!.id,
+      result,
+      inspected_at: String(form.get("inspected_at")),
+      note,
+      maintenance_request_id: maintenanceRequestId,
+    });
+    if (error) {
+      setStatus("[data-inspection-record-status]", error.message, true);
+      return;
+    }
+    if (result === "repair_needed") {
+      await supabase!.from("asset_items").update({ status: "repair_needed", managed_by: currentProfile!.id }).eq("id", plan.asset_id);
+    }
+    event.currentTarget.reset();
+    setStatus("[data-inspection-record-status]", "点検記録を登録しました。");
+    await renderInspectionsPage();
+  });
+}
+
+async function renderInspectionsPage() {
+  const [{ data: assets }, { data: plans }, { data: records }] = await Promise.all([
+    supabase!.from("asset_items").select("*").order("name"),
+    supabase!.from("inspection_plans").select("*, asset_items(name, location, status)").order("next_due_date", { ascending: true }),
+    supabase!.from("inspection_records").select("*, inspection_plans(title), asset_items(name)").order("inspected_at", { ascending: false }).order("created_at", { ascending: false }),
+  ]);
+  inspectionAssetsCache = (assets ?? []) as AssetItem[];
+  inspectionPlansCache = (plans ?? []) as InspectionPlan[];
+  const inspectionRecords = (records ?? []) as InspectionRecord[];
+  const today = new Date().toISOString().slice(0, 10);
+  setText("[data-metric='inspection-active']", String(inspectionPlansCache.filter((plan) => plan.is_active).length));
+  setText("[data-metric='inspection-due']", String(inspectionPlansCache.filter((plan) => plan.is_active && plan.next_due_date <= today).length));
+  setText("[data-metric='inspection-repair']", String(inspectionRecords.filter((record) => record.result === "repair_needed").length));
+  renderInspectionSelects(inspectionAssetsCache, inspectionPlansCache);
+  renderInspectionPlans(inspectionPlansCache);
+  renderInspectionRecords(inspectionRecords);
+}
+
+function renderInspectionSelects(assets: AssetItem[], plans: InspectionPlan[]) {
+  const assetSelect = qs<HTMLSelectElement>("[data-inspection-asset-select]");
+  if (assetSelect) {
+    assetSelect.disabled = assets.length === 0;
+    assetSelect.innerHTML = assets.length
+      ? assets.map((asset) => `<option value="${asset.id}">${escapeHtml(asset.name)} / ${escapeHtml(asset.location)}</option>`).join("")
+      : `<option value="">資産はありません</option>`;
+  }
+
+  const planSelect = qs<HTMLSelectElement>("[data-inspection-plan-select]");
+  const activePlans = plans.filter((plan) => plan.is_active);
+  if (planSelect) {
+    planSelect.disabled = activePlans.length === 0;
+    planSelect.innerHTML = activePlans.length
+      ? activePlans.map((plan) => `<option value="${plan.id}">${escapeHtml(plan.title)} / ${escapeHtml(plan.asset_items?.name ?? "資産")}</option>`).join("")
+      : `<option value="">有効な点検計画はありません</option>`;
+  }
+}
+
+function renderInspectionPlans(plans: InspectionPlan[]) {
+  const container = qs("[data-inspection-plan-list]");
+  if (!container) return;
+  if (!plans.length) {
+    container.innerHTML = `<p class="meta">点検計画はありません。</p>`;
+    return;
+  }
+  container.innerHTML = plans
+    .map(
+      (plan) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(plan.title)}</strong>
+              <p class="meta">${escapeHtml(plan.asset_items?.name ?? "資産")} / ${inspectionFrequencyLabels[plan.frequency]} / 次回 ${escapeHtml(plan.next_due_date)}</p>
+            </div>
+            <span class="badge ${plan.is_active ? "success" : "danger"}">${plan.is_active ? "有効" : "停止"}</span>
+          </div>
+          ${plan.note ? `<p>${escapeHtml(plan.note)}</p>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderInspectionRecords(records: InspectionRecord[]) {
+  const container = qs("[data-inspection-record-list]");
+  if (!container) return;
+  if (!records.length) {
+    container.innerHTML = `<p class="meta">点検記録はありません。</p>`;
+    return;
+  }
+  container.innerHTML = records
+    .map(
+      (record) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(record.inspection_plans?.title ?? "点検")}</strong>
+              <p class="meta">${escapeHtml(record.asset_items?.name ?? "資産")} / ${escapeHtml(record.inspected_at)}</p>
+            </div>
+            ${inspectionResultBadge(record.result)}
+          </div>
+          <p>${escapeHtml(record.note)}</p>
+          ${record.maintenance_request_id ? `<p class="meta">修繕依頼へ連携済み</p>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
 async function initAdmin() {
   if (!isAdmin()) {
     qs(".main")!.innerHTML = `<section class="panel"><h1>アクセス権限がありません</h1><p class="meta">管理者のみ利用できます。</p></section>`;
@@ -3346,6 +3854,16 @@ function dutyStatusBadge(status: DutyStatus) {
 function bulkyWasteStatusBadge(status: BulkyWasteStatus) {
   const className = status === "completed" ? "success" : status === "submitted" || status === "scheduled" ? "warning" : "danger";
   return `<span class="badge ${className}">${bulkyWasteStatusLabels[status]}</span>`;
+}
+
+function meetingStatusBadge(status: MeetingStatus) {
+  const className = status === "open" ? "warning" : status === "closed" ? "success" : "danger";
+  return `<span class="badge ${className}">${meetingStatusLabels[status]}</span>`;
+}
+
+function inspectionResultBadge(result: InspectionResult) {
+  const className = result === "ok" ? "success" : result === "watch" ? "warning" : "danger";
+  return `<span class="badge ${className}">${inspectionResultLabels[result]}</span>`;
 }
 
 void init();

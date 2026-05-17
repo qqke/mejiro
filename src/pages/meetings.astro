@@ -1,0 +1,151 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { CalendarDays, ClipboardList, Plus, Vote } from "@lucide/astro";
+---
+
+<AppLayout title="会議治理" page="meetings">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Meetings</p>
+      <h1>会議治理</h1>
+      <p class="lead">総会、理事会、委員会の開催、議案、出席・委任、投票結果をまとめて管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="会議治理指標">
+    <div class="panel metric">
+      <span>公開中会議</span>
+      <strong data-metric="meeting-open">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>議案</span>
+      <strong data-metric="meeting-agendas">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>出席・委任</span>
+      <strong data-metric="meeting-attendance">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-meeting-form>
+      <h2><Plus size={18} aria-hidden="true" /> 会議を作成</h2>
+      <div class="field">
+        <label for="meeting-title">会議名</label>
+        <input class="input" id="meeting-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="meeting-kind">種別</label>
+          <select class="select" id="meeting-kind" name="kind">
+            <option value="board">理事会</option>
+            <option value="general">総会</option>
+            <option value="committee">委員会</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="meeting-scheduled">開催日時</label>
+          <input class="input" id="meeting-scheduled" name="scheduled_at" type="datetime-local" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="meeting-location">場所</label>
+        <input class="input" id="meeting-location" name="location" />
+      </div>
+      <div class="field">
+        <label for="meeting-note">説明</label>
+        <textarea class="textarea" id="meeting-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">公開する</button>
+      <p class="status" data-meeting-status></p>
+    </form>
+
+    <form class="panel grid hidden" data-agenda-form>
+      <h2><ClipboardList size={18} aria-hidden="true" /> 議案を追加</h2>
+      <div class="field">
+        <label for="agenda-meeting">会議</label>
+        <select class="select" id="agenda-meeting" name="meeting_id" required data-agenda-meeting-select></select>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="agenda-title">議案名</label>
+          <input class="input" id="agenda-title" name="title" required />
+        </div>
+        <div class="field">
+          <label for="agenda-order">表示順</label>
+          <input class="input" id="agenda-order" name="sort_order" type="number" min="0" step="1" value="0" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="agenda-description">内容</label>
+        <textarea class="textarea" id="agenda-description" name="description" required></textarea>
+      </div>
+      <button class="button" type="submit">追加する</button>
+      <p class="status" data-agenda-status></p>
+    </form>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid" data-attendance-form>
+      <h2><CalendarDays size={18} aria-hidden="true" /> 出席・委任</h2>
+      <div class="field">
+        <label for="attendance-meeting">会議</label>
+        <select class="select" id="attendance-meeting" name="meeting_id" required data-attendance-meeting-select></select>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="attendance-status">区分</label>
+          <select class="select" id="attendance-status" name="status">
+            <option value="attending">出席</option>
+            <option value="proxy">委任</option>
+            <option value="absent">欠席</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="attendance-proxy">委任先</label>
+          <input class="input" id="attendance-proxy" name="proxy_to" placeholder="委任時のみ" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="attendance-note">メモ</label>
+        <textarea class="textarea" id="attendance-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">登録する</button>
+      <p class="status" data-attendance-status></p>
+    </form>
+
+    <form class="panel grid" data-vote-form>
+      <h2><Vote size={18} aria-hidden="true" /> 投票</h2>
+      <div class="field">
+        <label for="vote-agenda">議案</label>
+        <select class="select" id="vote-agenda" name="agenda_item_id" required data-vote-agenda-select></select>
+      </div>
+      <div class="field">
+        <label for="vote-choice">投票</label>
+        <select class="select" id="vote-choice" name="choice">
+          <option value="approve">賛成</option>
+          <option value="reject">反対</option>
+          <option value="abstain">棄権</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="vote-comment">コメント</label>
+        <textarea class="textarea" id="vote-comment" name="comment"></textarea>
+      </div>
+      <button class="button" type="submit">投票する</button>
+      <p class="status" data-vote-status></p>
+    </form>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <h2><CalendarDays size={18} aria-hidden="true" /> 会議一覧</h2>
+      <div class="list" data-meeting-list></div>
+    </div>
+    <div class="panel">
+      <h2><ClipboardList size={18} aria-hidden="true" /> 議案・結果</h2>
+      <div class="list" data-agenda-list></div>
+    </div>
+  </section>
+</AppLayout>

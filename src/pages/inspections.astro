@@ -1,0 +1,105 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Boxes, ClipboardCheck, Plus, Wrench } from "@lucide/astro";
+---
+
+<AppLayout title="長期点検" page="inspections">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Inspections</p>
+      <h1>長期点検</h1>
+      <p class="lead">共用設備、備品、防災用品の点検計画と記録を管理し、異常時は修繕依頼へつなげます。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="長期点検指標">
+    <div class="panel metric">
+      <span>有効計画</span>
+      <strong data-metric="inspection-active">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>点検期限</span>
+      <strong data-metric="inspection-due">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>要修理</span>
+      <strong data-metric="inspection-repair">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-inspection-plan-form>
+      <h2><Plus size={18} aria-hidden="true" /> 点検計画を作成</h2>
+      <div class="field">
+        <label for="inspection-asset">対象資産</label>
+        <select class="select" id="inspection-asset" name="asset_id" required data-inspection-asset-select></select>
+      </div>
+      <div class="field">
+        <label for="inspection-title">計画名</label>
+        <input class="input" id="inspection-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="inspection-frequency">周期</label>
+          <select class="select" id="inspection-frequency" name="frequency">
+            <option value="monthly">毎月</option>
+            <option value="quarterly">四半期</option>
+            <option value="semiannual">半年</option>
+            <option value="annual">年次</option>
+            <option value="ad_hoc">随時</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="inspection-next">次回点検</label>
+          <input class="input" id="inspection-next" name="next_due_date" type="date" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="inspection-note">メモ</label>
+        <textarea class="textarea" id="inspection-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">作成する</button>
+      <p class="status" data-inspection-plan-status></p>
+    </form>
+
+    <form class="panel grid hidden" data-inspection-record-form>
+      <h2><ClipboardCheck size={18} aria-hidden="true" /> 点検を記録</h2>
+      <div class="field">
+        <label for="inspection-plan">計画</label>
+        <select class="select" id="inspection-plan" name="plan_id" required data-inspection-plan-select></select>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="inspection-result">結果</label>
+          <select class="select" id="inspection-result" name="result">
+            <option value="ok">異常なし</option>
+            <option value="watch">経過観察</option>
+            <option value="repair_needed">修理必要</option>
+            <option value="retired">廃止</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="inspection-date">点検日</label>
+          <input class="input" id="inspection-date" name="inspected_at" type="date" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="inspection-record-note">記録</label>
+        <textarea class="textarea" id="inspection-record-note" name="note" required></textarea>
+      </div>
+      <button class="button" type="submit">記録する</button>
+      <p class="status" data-inspection-record-status></p>
+    </form>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <h2><Boxes size={18} aria-hidden="true" /> 点検計画</h2>
+      <div class="list" data-inspection-plan-list></div>
+    </div>
+    <div class="panel">
+      <h2><Wrench size={18} aria-hidden="true" /> 点検記録</h2>
+      <div class="list" data-inspection-record-list></div>
+    </div>
+  </section>
+</AppLayout>

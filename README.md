@@ -1,4 +1,4 @@
-# 团地管理组合电子化系统 v17
+# 团地管理组合电子化系统 v21
 
 这是一个基于 Astro、GitHub Pages 和 Supabase 的静态前端项目。Supabase 只使用 Auth、Postgres Tables 和 RLS 等基础能力。
 
@@ -25,6 +25,8 @@
 - 清扫当番、共用部巡回、植栽确认和会議準備的担当管理
 - 垃圾、资源、粗大垃圾收集规则和申报管理
 - 管理员维护会议室和用户权限
+- 会议治理：会议登记、议案管理、出席/委任、投票和结果汇总
+- 长期点检：设备点检计划、点检记录、异常转修缮和资产状态联动
 
 ## 版本范围
 
@@ -62,6 +64,10 @@ v16 增加当番/巡回模块：登记清扫、巡回、植栽、会議準備等
 
 v17 增加垃圾/资源模块：维护收集日、集积场所、出し方规则，并支持粗大垃圾申报和处理状态。
 
+v18/v19 增加会议治理模块：会议登记、议案管理、出席/委任、投票和结果汇总。
+
+v20/v21 增加长期点检模块：设备点检计划、点检记录、异常转修缮，并联动资产状态更新。
+
 ## 用户来源
 
 本项目没有前台自助注册入口。用户账号由管理员在 Supabase Dashboard 的 Authentication / Users 中创建。
@@ -80,17 +86,19 @@ where id = 'AUTH_USER_UUID';
 
 1. 创建 Supabase 项目。
 2. 新项目在 Supabase SQL Editor 中执行 `supabase/schema.sql`。
-3. 已经部署过 v1 的项目，依次执行 `supabase/v2_v3_migration.sql`、`supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-4. 已经部署到 v3 的项目，依次执行 `supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-5. 已经部署到 v5 的项目，依次执行 `supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-6. 已经部署到 v7 的项目，依次执行 `supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-7. 已经部署到 v9 的项目，依次执行 `supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-8. 已经部署到 v11 的项目，依次执行 `supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-9. 已经部署到 v13 的项目，依次执行 `supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`。
-10. 已经部署到 v15 的项目，只需要执行 `supabase/v16_v17_migration.sql`。
-11. 参考 `.env.example` 创建本地 `.env`。
-12. 在 Supabase Dashboard 的 Authentication / Users 中创建用户。
-13. 按需在 `public.profiles` 中调整用户角色。
+3. 已经部署过 v1 的项目，依次执行 `supabase/v2_v3_migration.sql`、`supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+4. 已经部署到 v3 的项目，依次执行 `supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+5. 已经部署到 v5 的项目，依次执行 `supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+6. 已经部署到 v7 的项目，依次执行 `supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+7. 已经部署到 v9 的项目，依次执行 `supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+8. 已经部署到 v11 的项目，依次执行 `supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+9. 已经部署到 v13 的项目，依次执行 `supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+10. 已经部署到 v15 的项目，只需要执行 `supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+11. 已经部署到 v17 的项目，只需要执行 `supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
+12. 已经部署到 v19 的项目，只需要执行 `supabase/v20_v21_migration.sql`。
+13. 参考 `.env.example` 创建本地 `.env`。
+14. 在 Supabase Dashboard 的 Authentication / Users 中创建用户。
+15. 按需在 `public.profiles` 中调整用户角色。
 
 ## 环境变量
 
