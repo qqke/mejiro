@@ -1,0 +1,94 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Check, FileCheck2, FileText, Plus, Stamp, X } from "@lucide/astro";
+---
+
+<AppLayout title="管理文書" page="documents">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Documents</p>
+      <h1>管理文書</h1>
+      <p class="lead">議事録、規約、見積、稟議などの版管理、承認フロー、電子印影を管理します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="文書指標">
+    <div class="panel metric">
+      <span>審査待ち</span>
+      <strong data-metric="review-documents">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>承認済み</span>
+      <strong data-metric="approved-documents">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>電子印影</span>
+      <strong data-metric="sealed-documents">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-document-form>
+      <h2><Plus size={18} aria-hidden="true" /> 文書を登録</h2>
+      <div class="field">
+        <label for="document-title">文書名</label>
+        <input class="input" id="document-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="document-kind">種別</label>
+          <select class="select" id="document-kind" name="kind">
+            <option value="minutes">議事録</option>
+            <option value="rule">規約</option>
+            <option value="estimate">見積</option>
+            <option value="approval">稟議</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="document-version">版</label>
+          <input class="input" id="document-version" name="version" value="1.0" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="document-url">参照 URL</label>
+        <input class="input" id="document-url" name="file_url" type="url" placeholder="https://..." />
+      </div>
+      <div class="field">
+        <label for="document-summary">概要</label>
+        <textarea class="textarea" id="document-summary" name="summary" required></textarea>
+      </div>
+      <button class="button" type="submit">審査へ回す</button>
+      <p class="status" data-document-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><FileText size={18} aria-hidden="true" /> 文書一覧</h2>
+      <div class="document-filters segmented" aria-label="文書フィルター">
+        <button class="segment active" type="button" data-document-filter="all">全体</button>
+        <button class="segment" type="button" data-document-filter="review">審査</button>
+        <button class="segment" type="button" data-document-filter="approved">承認</button>
+      </div>
+      <div class="list" data-document-list></div>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <div class="panel">
+      <h2><FileCheck2 size={18} aria-hidden="true" /> 承認履歴</h2>
+      <div class="list compact-list" data-document-approvals></div>
+    </div>
+    <div class="panel">
+      <h2><Stamp size={18} aria-hidden="true" /> 電子印影履歴</h2>
+      <div class="list compact-list" data-document-seals></div>
+    </div>
+  </section>
+
+  <template data-document-actions-template>
+    <div class="toolbar">
+      <button class="button" type="button" data-document-approve><Check size={16} aria-hidden="true" />承認</button>
+      <button class="button danger" type="button" data-document-reject><X size={16} aria-hidden="true" />差戻し</button>
+      <button class="button secondary" type="button" data-document-seal><Stamp size={16} aria-hidden="true" />印影</button>
+    </div>
+  </template>
+</AppLayout>

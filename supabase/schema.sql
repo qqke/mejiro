@@ -7,6 +7,13 @@ create type public.app_role as enum ('resident', 'board_member', 'admin');
 create type public.booking_status as enum ('pending', 'approved', 'rejected', 'cancelled');
 create type public.notice_kind as enum ('notice', 'meeting', 'topic');
 create type public.notice_target_role as enum ('all', 'resident', 'board_member', 'admin');
+create type public.document_kind as enum ('minutes', 'rule', 'estimate', 'approval', 'other');
+create type public.document_status as enum ('review', 'approved', 'rejected', 'archived');
+create type public.document_approval_action as enum ('approved', 'rejected');
+create type public.maintenance_category as enum ('common_area', 'equipment', 'safety', 'cleaning', 'other');
+create type public.maintenance_priority as enum ('normal', 'high', 'urgent');
+create type public.maintenance_status as enum ('open', 'in_progress', 'resolved', 'closed');
+create type public.finance_entry_type as enum ('income', 'expense');
 
 create schema if not exists app_private;
 
@@ -76,6 +83,68 @@ create table public.events (
   constraint event_time_order check (end_at is null or end_at > start_at)
 );
 
+create table public.management_documents (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  kind public.document_kind not null default 'other',
+  version text not null default '1.0',
+  summary text not null,
+  file_url text,
+  status public.document_status not null default 'review',
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  updated_by uuid references public.profiles(id),
+  approved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.document_approvals (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.management_documents(id) on delete cascade,
+  actor_id uuid not null references public.profiles(id) on delete cascade,
+  action public.document_approval_action not null,
+  comment text,
+  created_at timestamptz not null default now()
+);
+
+create table public.document_seals (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.management_documents(id) on delete cascade,
+  sealed_by uuid not null references public.profiles(id) on delete cascade,
+  seal_name text not null,
+  sealed_at timestamptz not null default now(),
+  note text
+);
+
+create table public.maintenance_requests (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  category public.maintenance_category not null default 'other',
+  priority public.maintenance_priority not null default 'normal',
+  status public.maintenance_status not null default 'open',
+  location text not null,
+  description text not null,
+  requester_id uuid not null references public.profiles(id) on delete cascade,
+  handled_by uuid references public.profiles(id),
+  handler_note text,
+  resolved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table public.finance_entries (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  entry_type public.finance_entry_type not null,
+  category text not null,
+  amount integer not null check (amount >= 0),
+  entry_date date not null,
+  note text,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create or replace function app_private.has_role(required_roles public.app_role[])
 returns boolean
 language sql
@@ -127,12 +196,29 @@ create trigger profiles_set_updated_at
 before update on public.profiles
 for each row execute function public.set_updated_at();
 
+create trigger documents_set_updated_at
+before update on public.management_documents
+for each row execute function public.set_updated_at();
+
+create trigger maintenance_set_updated_at
+before update on public.maintenance_requests
+for each row execute function public.set_updated_at();
+
+create trigger finance_set_updated_at
+before update on public.finance_entries
+for each row execute function public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.room_bookings enable row level security;
 alter table public.notices enable row level security;
 alter table public.notice_reads enable row level security;
 alter table public.events enable row level security;
+alter table public.management_documents enable row level security;
+alter table public.document_approvals enable row level security;
+alter table public.document_seals enable row level security;
+alter table public.maintenance_requests enable row level security;
+alter table public.finance_entries enable row level security;
 
 create policy "profiles_select_own_or_manager"
 on public.profiles for select
@@ -233,6 +319,77 @@ create policy "events_manager_delete"
 on public.events for delete
 to authenticated
 using (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "documents_select_authenticated"
+on public.management_documents for select
+to authenticated
+using (true);
+
+create policy "documents_manager_insert"
+on public.management_documents for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "documents_manager_update"
+on public.management_documents for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "document_approvals_select_authenticated"
+on public.document_approvals for select
+to authenticated
+using (true);
+
+create policy "document_approvals_manager_insert"
+on public.document_approvals for insert
+to authenticated
+with check (actor_id = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "document_seals_select_authenticated"
+on public.document_seals for select
+to authenticated
+using (true);
+
+create policy "document_seals_manager_insert"
+on public.document_seals for insert
+to authenticated
+with check (sealed_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "maintenance_select_own_or_manager"
+on public.maintenance_requests for select
+to authenticated
+using (requester_id = auth.uid() or app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "maintenance_insert_own"
+on public.maintenance_requests for insert
+to authenticated
+with check (requester_id = auth.uid() and status = 'open');
+
+create policy "maintenance_update_own_or_manager"
+on public.maintenance_requests for update
+to authenticated
+using (requester_id = auth.uid() or app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (
+  app_private.has_role(array['board_member', 'admin']::public.app_role[])
+  or (requester_id = auth.uid() and status in ('open', 'closed'))
+);
+
+create policy "finance_select_authenticated"
+on public.finance_entries for select
+to authenticated
+using (true);
+
+create policy "finance_manager_insert"
+on public.finance_entries for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "finance_manager_update"
+on public.finance_entries for update
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
 
 insert into public.rooms (name, capacity, notes)
 values

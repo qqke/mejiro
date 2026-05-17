@@ -1,0 +1,78 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { HandCoins, Plus } from "@lucide/astro";
+---
+
+<AppLayout title="収支台帳" page="finance">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Finance</p>
+      <h1>収支台帳</h1>
+      <p class="lead">管理費、修繕積立金、工事費、備品購入などの収入・支出を共有します。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="収支指標">
+    <div class="panel metric">
+      <span>収入</span>
+      <strong data-metric="finance-income">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>支出</span>
+      <strong data-metric="finance-expense">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>差引</span>
+      <strong data-metric="finance-balance">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid hidden" data-finance-form>
+      <h2><Plus size={18} aria-hidden="true" /> 台帳へ記録</h2>
+      <div class="field">
+        <label for="finance-title">摘要</label>
+        <input class="input" id="finance-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="finance-entry-type">区分</label>
+          <select class="select" id="finance-entry-type" name="entry_type">
+            <option value="income">収入</option>
+            <option value="expense">支出</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="finance-amount">金額</label>
+          <input class="input" id="finance-amount" name="amount" type="number" min="0" step="1" required />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="finance-category">分類</label>
+          <input class="input" id="finance-category" name="category" placeholder="管理費、修繕、備品など" required />
+        </div>
+        <div class="field">
+          <label for="finance-entry-date">日付</label>
+          <input class="input" id="finance-entry-date" name="entry_date" type="date" required />
+        </div>
+      </div>
+      <div class="field">
+        <label for="finance-note">備考</label>
+        <textarea class="textarea" id="finance-note" name="note"></textarea>
+      </div>
+      <button class="button" type="submit">記録する</button>
+      <p class="status" data-finance-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><HandCoins size={18} aria-hidden="true" /> 台帳一覧</h2>
+      <div class="finance-filters segmented" aria-label="収支フィルター">
+        <button class="segment active" type="button" data-finance-filter="all">全体</button>
+        <button class="segment" type="button" data-finance-filter="income">収入</button>
+        <button class="segment" type="button" data-finance-filter="expense">支出</button>
+      </div>
+      <div class="list" data-finance-list></div>
+    </div>
+  </section>
+</AppLayout>

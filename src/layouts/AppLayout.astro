@@ -5,15 +5,18 @@ import {
   Building2,
   CalendarDays,
   ClipboardList,
+  FileText,
+  HandCoins,
   Home,
   LogOut,
   Settings,
+  Wrench,
 } from "@lucide/astro";
 
 type Props = {
   title: string;
   description?: string;
-  page: "home" | "rooms" | "notices" | "events" | "admin";
+  page: "home" | "rooms" | "notices" | "events" | "documents" | "maintenance" | "finance" | "admin";
 };
 
 const { title, description = "団地管理組合電子化システム", page } = Astro.props;
@@ -25,6 +28,9 @@ const navItems = [
   { href: asset("/rooms/"), label: "会議室", page: "rooms", icon: Building2 },
   { href: asset("/notices/"), label: "通知・課題", page: "notices", icon: Bell },
   { href: asset("/events/"), label: "年間行事", page: "events", icon: CalendarDays },
+  { href: asset("/documents/"), label: "管理文書", page: "documents", icon: FileText },
+  { href: asset("/maintenance/"), label: "修繕工事", page: "maintenance", icon: Wrench },
+  { href: asset("/finance/"), label: "収支台帳", page: "finance", icon: HandCoins },
   { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
 ];
 ---

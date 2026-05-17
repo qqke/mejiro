@@ -1,0 +1,80 @@
+---
+import AppLayout from "../layouts/AppLayout.astro";
+import { Plus, Wrench } from "@lucide/astro";
+---
+
+<AppLayout title="修繕工事" page="maintenance">
+  <header class="page-head">
+    <div>
+      <p class="eyebrow">Maintenance</p>
+      <h1>修繕工事</h1>
+      <p class="lead">共用部の不具合、修繕依頼、工事対応状況を記録し、理事・管理者が対応を進めます。</p>
+    </div>
+  </header>
+
+  <section class="grid cols-3" aria-label="修繕指標">
+    <div class="panel metric">
+      <span>受付中</span>
+      <strong data-metric="maintenance-open">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>対応中</span>
+      <strong data-metric="maintenance-progress">0</strong>
+    </div>
+    <div class="panel metric">
+      <span>完了</span>
+      <strong data-metric="maintenance-done">0</strong>
+    </div>
+  </section>
+
+  <section class="grid cols-2" style="margin-top: 16px;">
+    <form class="panel grid" data-maintenance-form>
+      <h2><Plus size={18} aria-hidden="true" /> 修繕依頼</h2>
+      <div class="field">
+        <label for="maintenance-title">件名</label>
+        <input class="input" id="maintenance-title" name="title" required />
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="maintenance-category">分類</label>
+          <select class="select" id="maintenance-category" name="category">
+            <option value="common_area">共用部</option>
+            <option value="equipment">設備</option>
+            <option value="safety">安全</option>
+            <option value="cleaning">清掃</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="maintenance-priority">優先度</label>
+          <select class="select" id="maintenance-priority" name="priority">
+            <option value="normal">通常</option>
+            <option value="high">高</option>
+            <option value="urgent">緊急</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="maintenance-location">場所</label>
+        <input class="input" id="maintenance-location" name="location" required />
+      </div>
+      <div class="field">
+        <label for="maintenance-description">内容</label>
+        <textarea class="textarea" id="maintenance-description" name="description" required></textarea>
+      </div>
+      <button class="button" type="submit">依頼する</button>
+      <p class="status" data-maintenance-status></p>
+    </form>
+
+    <div class="panel">
+      <h2><Wrench size={18} aria-hidden="true" /> 対応一覧</h2>
+      <div class="maintenance-filters segmented" aria-label="修繕フィルター">
+        <button class="segment active" type="button" data-maintenance-filter="all">全体</button>
+        <button class="segment" type="button" data-maintenance-filter="open">受付</button>
+        <button class="segment" type="button" data-maintenance-filter="in_progress">対応</button>
+        <button class="segment" type="button" data-maintenance-filter="resolved">完了</button>
+      </div>
+      <div class="list" data-maintenance-list></div>
+    </div>
+  </section>
+</AppLayout>

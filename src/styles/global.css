@@ -366,6 +366,13 @@ h3 {
   line-height: 1.5;
 }
 
+.text-link {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -457,6 +464,40 @@ h3 {
 .segment.active {
   background: var(--primary);
   color: var(--primary-foreground);
+}
+
+.document-filters,
+.maintenance-filters,
+.finance-filters {
+  margin-bottom: 14px;
+}
+
+.amount {
+  font-size: 18px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.amount.income {
+  color: var(--success);
+}
+
+.amount.expense {
+  color: var(--danger);
+}
+
+.seal-mark {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border: 2px solid var(--danger);
+  border-radius: 50%;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
 }
 
 .visual-calendar {
@@ -686,7 +727,7 @@ h3 {
   }
 
   .nav {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .brand {
