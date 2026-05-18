@@ -49,9 +49,10 @@ type EventItem = {
   end_at: string | null;
 };
 
-type DocumentStatus = "review" | "approved" | "rejected" | "archived";
+type DocumentStatus = "review" | "board_review" | "chair_review" | "president_review" | "approved" | "rejected" | "archived";
 type DocumentKind = "minutes" | "rule" | "estimate" | "approval" | "other";
 type DocumentApprovalAction = "approved" | "rejected";
+type DocumentApprovalStage = "board" | "chair" | "president";
 
 type ManagementDocument = {
   id: string;
@@ -73,6 +74,7 @@ type DocumentApproval = {
   id: string;
   document_id: string;
   actor_id: string;
+  stage: DocumentApprovalStage;
   action: DocumentApprovalAction;
   comment: string | null;
   created_at: string;
@@ -84,6 +86,7 @@ type DocumentSeal = {
   id: string;
   document_id: string;
   sealed_by: string;
+  stage: DocumentApprovalStage;
   seal_name: string;
   sealed_at: string;
   note: string | null;
@@ -477,6 +480,8 @@ let inspectionAssetsCache: AssetItem[] = [];
 const roleLabels: Record<Role, string> = {
   resident: "居民",
   board_member: "理事",
+  chair: "主席",
+  president: "理事長",
   admin: "管理者",
 };
 
@@ -502,10 +507,25 @@ const documentKindLabels: Record<DocumentKind, string> = {
 };
 
 const documentStatusLabels: Record<DocumentStatus, string> = {
-  review: "審査中",
+  review: "理事承認待ち",
+  board_review: "理事承認待ち",
+  chair_review: "主席承認待ち",
+  president_review: "理事長承認待ち",
   approved: "承認済み",
   rejected: "差戻し",
   archived: "保管済み",
+};
+
+const documentStageLabels: Record<DocumentApprovalStage, string> = {
+  board: "理事",
+  chair: "主席",
+  president: "理事長",
+};
+
+const documentStageSealNames: Record<DocumentApprovalStage, string> = {
+  board: "理事印",
+  chair: "主席印",
+  president: "理事長印",
 };
 
 const maintenanceCategoryLabels: Record<MaintenanceCategory, string> = {
@@ -778,6 +798,10 @@ function canManage() {
   return currentProfile?.role === "admin" || currentProfile?.role === "board_member";
 }
 
+function canManageDocuments() {
+  return currentProfile?.role === "admin" || currentProfile?.role === "board_member" || currentProfile?.role === "chair" || currentProfile?.role === "president";
+}
+
 function isAdmin() {
   return currentProfile?.role === "admin";
 }
@@ -916,7 +940,7 @@ async function initHome() {
       .limit(5),
     supabase!.from("notices").select("*").order("created_at", { ascending: false }).limit(5),
     supabase!.from("events").select("*").order("start_at", { ascending: true }).limit(5),
-    supabase!.from("management_documents").select("id, status").eq("status", "review"),
+    supabase!.from("management_documents").select("id, status").in("status", ["review", "board_review", "chair_review", "president_review"]),
     countUnreadNotices(),
   ]);
 
@@ -1393,7 +1417,7 @@ function renderEventList(selector: string, events: EventItem[]) {
 }
 
 async function initDocuments() {
-  qs("[data-document-form]")?.classList.toggle("hidden", !canManage());
+  qs("[data-document-form]")?.classList.toggle("hidden", !canManageDocuments());
   await renderDocumentsPage();
 
   qsa<HTMLButtonElement>("[data-document-filter]").forEach((button) => {
@@ -1417,7 +1441,7 @@ async function initDocuments() {
       version: String(form.get("version") || "1.0"),
       summary: String(form.get("summary")),
       file_url: String(form.get("file_url") || "") || null,
-      status: "review",
+      status: "board_review",
       created_by: currentProfile!.id,
       updated_by: currentProfile!.id,
     });
@@ -1439,7 +1463,7 @@ async function renderDocumentsPage() {
     .select("*")
     .order("updated_at", { ascending: false });
 
-  if (documentFilter !== "all") query = query.eq("status", documentFilter);
+  if (documentFilter !== "all" && documentFilter !== "review") query = query.eq("status", documentFilter);
 
   const [{ data: documents }, { data: approvals }, { data: seals }] = await Promise.all([
     query,
@@ -1455,13 +1479,37 @@ async function renderDocumentsPage() {
       .limit(8),
   ]);
 
-  const allDocuments = (documents ?? []) as ManagementDocument[];
-  setText("[data-metric='review-documents']", String(allDocuments.filter((document) => document.status === "review").length));
+  const allDocuments = ((documents ?? []) as ManagementDocument[]).filter((document) => documentFilter !== "review" || isDocumentApprovalStatus(document.status));
+  setText("[data-metric='review-documents']", String(allDocuments.filter((document) => isDocumentApprovalStatus(document.status)).length));
   setText("[data-metric='approved-documents']", String(allDocuments.filter((document) => document.status === "approved").length));
   setText("[data-metric='sealed-documents']", String((seals ?? []).length));
   renderDocumentList(allDocuments);
   renderDocumentApprovals((approvals ?? []) as DocumentApproval[]);
   renderDocumentSeals((seals ?? []) as DocumentSeal[]);
+}
+
+function isDocumentApprovalStatus(status: DocumentStatus) {
+  return status === "review" || status === "board_review" || status === "chair_review" || status === "president_review";
+}
+
+function documentStageForStatus(status: DocumentStatus): DocumentApprovalStage | null {
+  if (status === "review" || status === "board_review") return "board";
+  if (status === "chair_review") return "chair";
+  if (status === "president_review") return "president";
+  return null;
+}
+
+function nextDocumentStatusForStage(stage: DocumentApprovalStage): DocumentStatus {
+  if (stage === "board") return "chair_review";
+  if (stage === "chair") return "president_review";
+  return "approved";
+}
+
+function canApproveDocumentStage(stage: DocumentApprovalStage) {
+  if (currentProfile?.role === "admin") return true;
+  if (stage === "board") return currentProfile?.role === "board_member";
+  if (stage === "chair") return currentProfile?.role === "chair";
+  return currentProfile?.role === "president";
 }
 
 function renderDocumentList(documents: ManagementDocument[]) {
@@ -1474,7 +1522,10 @@ function renderDocumentList(documents: ManagementDocument[]) {
 
   container.innerHTML = documents
     .map(
-      (document) => `
+      (document) => {
+        const stage = documentStageForStatus(document.status);
+        const canActOnStage = stage ? canApproveDocumentStage(stage) : false;
+        return `
         <article class="list-item">
           <div class="list-row">
             <div>
@@ -1486,17 +1537,17 @@ function renderDocumentList(documents: ManagementDocument[]) {
           <p>${escapeHtml(document.summary)}</p>
           <p class="meta">登録者 ${escapeHtml(document.profiles?.display_name ?? "管理者")}${document.file_url ? ` / <a class="text-link" href="${escapeHtml(document.file_url)}" target="_blank" rel="noreferrer">参照ファイル</a>` : ""}</p>
           ${
-            canManage()
+            canManageDocuments()
               ? `<div class="toolbar">
                   ${
-                    document.status === "review"
-                      ? `<button class="button" type="button" data-document-approve="${document.id}">承認</button>
+                    stage
+                      ? `${canActOnStage ? `<button class="button" type="button" data-document-approve="${document.id}">${documentStageLabels[stage]}承認</button>` : `<span class="badge warning">${documentStageLabels[stage]}承認待ち</span>`}
                          <button class="button danger" type="button" data-document-reject="${document.id}">差戻し</button>`
                       : ""
                   }
                   ${
-                    document.status === "approved"
-                      ? `<button class="button secondary" type="button" data-document-seal="${document.id}">電子印影</button>`
+                    document.status === "rejected"
+                      ? `<button class="button" type="button" data-document-resubmit="${document.id}">再審査へ回す</button>`
                       : ""
                   }
                   <button class="button secondary" type="button" data-document-archive="${document.id}">保管</button>
@@ -1504,21 +1555,22 @@ function renderDocumentList(documents: ManagementDocument[]) {
               : ""
           }
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 
   qsa<HTMLButtonElement>("[data-document-approve]").forEach((button) => {
-    button.addEventListener("click", () => updateDocumentStatus(button.dataset.documentApprove!, "approved"));
+    button.addEventListener("click", () => approveDocumentStage(button.dataset.documentApprove!));
   });
   qsa<HTMLButtonElement>("[data-document-reject]").forEach((button) => {
-    button.addEventListener("click", () => updateDocumentStatus(button.dataset.documentReject!, "rejected"));
+    button.addEventListener("click", () => rejectDocument(button.dataset.documentReject!));
+  });
+  qsa<HTMLButtonElement>("[data-document-resubmit]").forEach((button) => {
+    button.addEventListener("click", () => updateDocumentStatus(button.dataset.documentResubmit!, "board_review"));
   });
   qsa<HTMLButtonElement>("[data-document-archive]").forEach((button) => {
     button.addEventListener("click", () => updateDocumentStatus(button.dataset.documentArchive!, "archived"));
-  });
-  qsa<HTMLButtonElement>("[data-document-seal]").forEach((button) => {
-    button.addEventListener("click", () => sealDocument(button.dataset.documentSeal!));
   });
 }
 
@@ -1545,19 +1597,88 @@ async function updateDocumentStatus(id: string, status: DocumentStatus) {
   await renderDocumentsPage();
 }
 
-async function sealDocument(id: string) {
-  const sealName = currentProfile?.role === "admin" ? "管理者印" : "理事印";
+async function approveDocumentStage(id: string) {
+  const document = await loadDocumentForAction(id);
+  if (!document) return;
+  const stage = documentStageForStatus(document.status);
+  if (!stage) return;
+  if (!canApproveDocumentStage(stage)) {
+    alert(`${documentStageLabels[stage]}承認の権限がありません。`);
+    return;
+  }
+
+  const nextStatus = nextDocumentStatusForStage(stage);
+  const approvedAt = nextStatus === "approved" ? new Date().toISOString() : null;
+  const { error } = await supabase!
+    .from("management_documents")
+    .update({ status: nextStatus, updated_by: currentProfile!.id, approved_at: approvedAt })
+    .eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await supabase!.from("document_approvals").insert({
+    document_id: id,
+    actor_id: currentProfile!.id,
+    stage,
+    action: "approved",
+    comment: `${documentStageLabels[stage]}承認しました。`,
+  });
+
+  await sealDocument(id, stage);
+  await renderDocumentsPage();
+}
+
+async function rejectDocument(id: string) {
+  const document = await loadDocumentForAction(id);
+  if (!document) return;
+  const stage = documentStageForStatus(document.status) ?? "board";
+  const { error } = await supabase!
+    .from("management_documents")
+    .update({ status: "rejected", updated_by: currentProfile!.id, approved_at: null })
+    .eq("id", id);
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await supabase!.from("document_approvals").insert({
+    document_id: id,
+    actor_id: currentProfile!.id,
+    stage,
+    action: "rejected",
+    comment: `${documentStageLabels[stage]}段階で差戻しました。`,
+  });
+
+  await renderDocumentsPage();
+}
+
+async function loadDocumentForAction(id: string) {
+  const { data, error } = await supabase!.from("management_documents").select("*").eq("id", id).single();
+  if (error) {
+    alert(error.message);
+    return null;
+  }
+  return data as ManagementDocument;
+}
+
+async function sealDocument(id: string, stage: DocumentApprovalStage) {
+  const sealName = documentStageSealNames[stage];
+  const note = currentProfile?.role === "admin"
+    ? `管理者が${documentStageLabels[stage]}承認を代行し、電子印影を付与しました。`
+    : `${documentStageLabels[stage]}承認により電子印影を付与しました。`;
   const { error } = await supabase!.from("document_seals").insert({
     document_id: id,
     sealed_by: currentProfile!.id,
+    stage,
     seal_name: sealName,
-    note: "承認済み文書へ電子印影を付与しました。",
+    note,
   });
   if (error) {
     alert(error.message);
     return;
   }
-  await renderDocumentsPage();
 }
 
 function renderDocumentApprovals(approvals: DocumentApproval[]) {
@@ -1574,7 +1695,7 @@ function renderDocumentApprovals(approvals: DocumentApproval[]) {
           <div class="list-row">
             <div>
               <strong>${escapeHtml(approval.management_documents?.title ?? "文書")}</strong>
-              <p class="meta">v${escapeHtml(approval.management_documents?.version ?? "-")} / ${formatDateTime(approval.created_at)} / ${escapeHtml(approval.profiles?.display_name ?? "担当者")}</p>
+              <p class="meta">${documentStageLabels[approval.stage]} / v${escapeHtml(approval.management_documents?.version ?? "-")} / ${formatDateTime(approval.created_at)} / ${escapeHtml(approval.profiles?.display_name ?? "担当者")}</p>
             </div>
             <span class="badge ${approval.action === "approved" ? "success" : "danger"}">${approval.action === "approved" ? "承認" : "差戻し"}</span>
           </div>
@@ -1599,7 +1720,7 @@ function renderDocumentSeals(seals: DocumentSeal[]) {
           <div class="list-row">
             <div>
               <strong>${escapeHtml(seal.management_documents?.title ?? "文書")}</strong>
-              <p class="meta">v${escapeHtml(seal.management_documents?.version ?? "-")} / ${formatDateTime(seal.sealed_at)} / ${escapeHtml(seal.profiles?.display_name ?? "担当者")}</p>
+              <p class="meta">${documentStageLabels[seal.stage]} / v${escapeHtml(seal.management_documents?.version ?? "-")} / ${formatDateTime(seal.sealed_at)} / ${escapeHtml(seal.profiles?.display_name ?? "担当者")}</p>
             </div>
             <span class="seal-mark">${escapeHtml(seal.seal_name)}</span>
           </div>
@@ -3857,7 +3978,7 @@ function statusBadge(status: BookingStatus) {
 }
 
 function documentStatusBadge(status: DocumentStatus) {
-  const className = status === "approved" ? "success" : status === "review" ? "warning" : "danger";
+  const className = status === "approved" ? "success" : isDocumentApprovalStatus(status) ? "warning" : "danger";
   return `<span class="badge ${className}">${documentStatusLabels[status]}</span>`;
 }
 

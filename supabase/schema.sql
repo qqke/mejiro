@@ -3,13 +3,14 @@
 
 create extension if not exists btree_gist;
 
-create type public.app_role as enum ('resident', 'board_member', 'admin');
+create type public.app_role as enum ('resident', 'board_member', 'chair', 'president', 'admin');
 create type public.booking_status as enum ('pending', 'approved', 'rejected', 'cancelled');
 create type public.notice_kind as enum ('notice', 'meeting', 'topic');
 create type public.notice_target_role as enum ('all', 'resident', 'board_member', 'admin');
 create type public.document_kind as enum ('minutes', 'rule', 'estimate', 'approval', 'other');
-create type public.document_status as enum ('review', 'approved', 'rejected', 'archived');
+create type public.document_status as enum ('review', 'board_review', 'chair_review', 'president_review', 'approved', 'rejected', 'archived');
 create type public.document_approval_action as enum ('approved', 'rejected');
+create type public.document_approval_stage as enum ('board', 'chair', 'president');
 create type public.maintenance_category as enum ('common_area', 'equipment', 'safety', 'cleaning', 'other');
 create type public.maintenance_priority as enum ('normal', 'high', 'urgent');
 create type public.maintenance_status as enum ('open', 'in_progress', 'resolved', 'closed');
@@ -120,7 +121,7 @@ create table public.management_documents (
   version text not null default '1.0',
   summary text not null,
   file_url text,
-  status public.document_status not null default 'review',
+  status public.document_status not null default 'board_review',
   created_by uuid not null references public.profiles(id) on delete cascade,
   updated_by uuid references public.profiles(id),
   approved_at timestamptz,
@@ -132,6 +133,7 @@ create table public.document_approvals (
   id uuid primary key default gen_random_uuid(),
   document_id uuid not null references public.management_documents(id) on delete cascade,
   actor_id uuid not null references public.profiles(id) on delete cascade,
+  stage public.document_approval_stage not null default 'board',
   action public.document_approval_action not null,
   comment text,
   created_at timestamptz not null default now()
@@ -141,6 +143,7 @@ create table public.document_seals (
   id uuid primary key default gen_random_uuid(),
   document_id uuid not null references public.management_documents(id) on delete cascade,
   sealed_by uuid not null references public.profiles(id) on delete cascade,
+  stage public.document_approval_stage not null default 'board',
   seal_name text not null,
   sealed_at timestamptz not null default now(),
   note text
@@ -794,13 +797,13 @@ using (true);
 create policy "documents_manager_insert"
 on public.management_documents for insert
 to authenticated
-with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
 
 create policy "documents_manager_update"
 on public.management_documents for update
 to authenticated
-using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
-with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+using (app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]))
+with check (app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
 
 create policy "document_approvals_select_authenticated"
 on public.document_approvals for select
@@ -810,7 +813,7 @@ using (true);
 create policy "document_approvals_manager_insert"
 on public.document_approvals for insert
 to authenticated
-with check (actor_id = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+with check (actor_id = auth.uid() and app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
 
 create policy "document_seals_select_authenticated"
 on public.document_seals for select
@@ -820,7 +823,7 @@ using (true);
 create policy "document_seals_manager_insert"
 on public.document_seals for insert
 to authenticated
-with check (sealed_by = auth.uid() and app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+with check (sealed_by = auth.uid() and app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
 
 create policy "maintenance_select_own_or_manager"
 on public.maintenance_requests for select

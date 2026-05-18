@@ -110,9 +110,23 @@ async function createTempCluster() {
 
   const workDir = await mkdtemp(path.join(tmpdir(), "mejiro-pg-"));
   const port = await getFreePort();
+  const socketDir = process.platform === "win32" ? null : workDir;
 
   runOrThrow(initdb, ["-A", "trust", "-U", "postgres", "-D", workDir, "--encoding=UTF8", "--locale=C"]);
-  const server = spawn(postgres, ["-D", workDir, "-p", String(port), "-c", "listen_addresses=127.0.0.1", "-c", "timezone=UTC"], {
+  const serverArgs = [
+    "-D",
+    workDir,
+    "-p",
+    String(port),
+    "-c",
+    "listen_addresses=127.0.0.1",
+    "-c",
+    "timezone=UTC",
+  ];
+  if (socketDir) {
+    serverArgs.push("-c", `unix_socket_directories=${socketDir}`);
+  }
+  const server = spawn(postgres, serverArgs, {
     cwd: workDir,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -143,6 +157,14 @@ async function createTempCluster() {
     psql,
     server,
     async stop() {
+      const exited = new Promise((resolve) => {
+        if (server.exitCode !== null) {
+          resolve(null);
+        } else {
+          server.once("exit", () => resolve(null));
+        }
+      });
+
       if (server.pid) {
         if (process.platform === "win32") {
           spawnSync("taskkill", ["/pid", String(server.pid), "/t", "/f"], {
@@ -155,13 +177,22 @@ async function createTempCluster() {
         }
       }
 
+      await Promise.race([
+        exited,
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
+
       for (let attempt = 0; attempt < 10; attempt += 1) {
         try {
           await rm(workDir, { recursive: true, force: true });
           return;
         } catch (error) {
-          if (!["EBUSY", "EPERM"].includes(String(error?.code ?? "")) || attempt === 9) {
+          if (!["EBUSY", "EPERM"].includes(String(error?.code ?? ""))) {
             throw error;
+          }
+          if (attempt === 9) {
+            console.warn(`db smoke cleanup skipped locked temp dir: ${workDir}`);
+            return;
           }
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
@@ -183,6 +214,7 @@ function toPosixPath(filePath) {
 const schemaPath = path.join(repoRoot, "supabase", "schema.sql");
 const v18v19Path = path.join(repoRoot, "supabase", "v18_v19_migration.sql");
 const v20v21Path = path.join(repoRoot, "supabase", "v20_v21_migration.sql");
+const v22v23Path = path.join(repoRoot, "supabase", "v22_v23_migration.sql");
 
 const cluster = await createTempCluster();
 if (!cluster) {
@@ -230,6 +262,7 @@ grant execute on function auth.uid() to authenticated;
 \i '${toPosixPath(schemaPath)}'
 \i '${toPosixPath(v18v19Path)}'
 \i '${toPosixPath(v20v21Path)}'
+\i '${toPosixPath(v22v23Path)}'
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -390,3 +423,5 @@ try {
 } finally {
   await cluster.stop();
 }
+
+process.exit(0);

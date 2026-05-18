@@ -126,14 +126,25 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await waitForCount(createdDocument, 1, "created document row");
   await createdDocument.locator("[data-document-approve]").click();
   await waitForCondition(
-    () => backend.state.management_documents.some((document) => document.title === "議事録テスト" && document.status === "approved"),
-    "document approval",
+    () => backend.state.management_documents.some((document) => document.title === "議事録テスト" && document.status === "chair_review"),
+    "document board approval",
   );
+  await createdDocument.locator("[data-document-approve]").click();
+  await waitForCondition(
+    () => backend.state.management_documents.some((document) => document.title === "議事録テスト" && document.status === "president_review"),
+    "document chair approval",
+  );
+  await createdDocument.locator("[data-document-approve]").click();
+  await waitForCondition(
+    () => backend.state.management_documents.some((document) => document.title === "議事録テスト" && document.status === "approved"),
+    "document president approval",
+  );
+  const createdDocumentId = backend.state.management_documents.find((document) => document.title === "議事録テスト").id;
+  assert(backend.state.document_approvals.filter((approval) => approval.document_id === createdDocumentId && approval.action === "approved").length === 3, "document should have three approval records");
+  assert(backend.state.document_seals.filter((seal) => seal.document_id === createdDocumentId).length === 3, "document should have three seal records");
   await page.goto(`${baseUrl}/documents/`, { waitUntil: "domcontentloaded" });
   await waitPage(page, "documents");
   const approvedDocument = page.locator("[data-document-list] .list-item").filter({ hasText: "議事録テスト" });
-  await waitForCount(approvedDocument.locator("[data-document-seal]"), 1, "document seal action");
-  await approvedDocument.locator("[data-document-seal]").click();
   await approvedDocument.locator("[data-document-archive]").click();
 
   await page.goto(`${baseUrl}/maintenance/`, { waitUntil: "domcontentloaded" });

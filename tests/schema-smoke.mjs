@@ -15,6 +15,7 @@ async function read(relativePath) {
 const schema = await read("supabase/schema.sql");
 const v18v19 = await read("supabase/v18_v19_migration.sql");
 const v20v21 = await read("supabase/v20_v21_migration.sql");
+const v22v23 = await read("supabase/v22_v23_migration.sql");
 
 function getPublicTables(sql) {
   const tables = [];
@@ -78,6 +79,20 @@ for (const bit of [
   "grant select, insert, update on public.inspection_records to authenticated;",
 ]) {
   assert(v20v21.includes(bit), `v20_v21_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "chair",
+  "president",
+  "board_review",
+  "chair_review",
+  "president_review",
+  "document_approval_stage",
+  "add column if not exists stage",
+  "documents_manager_update",
+  "document_seals_manager_insert",
+]) {
+  assert(v22v23.includes(bit), `v22_v23_migration.sql should include ${bit}`);
 }
 
 assert(schema.includes("create trigger"), "schema.sql should include triggers");

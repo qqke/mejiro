@@ -14,7 +14,7 @@ export const supabase = hasSupabaseConfig
     })
   : null;
 
-export type Role = "resident" | "board_member" | "admin";
+export type Role = "resident" | "board_member" | "chair" | "president" | "admin";
 export type BookingStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export type Profile = {
