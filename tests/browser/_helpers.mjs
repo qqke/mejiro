@@ -9,6 +9,17 @@ import { chromium } from "playwright";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 let previewBuildPromise = null;
 
+function smokeEnv(extra = {}) {
+  return {
+    ...process.env,
+    ASTRO_BASE_PATH: process.env.ASTRO_BASE_PATH ?? "",
+    PUBLIC_SITE_URL: process.env.PUBLIC_SITE_URL ?? "http://127.0.0.1",
+    PUBLIC_SUPABASE_URL: process.env.PUBLIC_SUPABASE_URL ?? "https://example.supabase.co",
+    PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "public-anon-key",
+    ...extra,
+  };
+}
+
 async function ensurePreviewBuild() {
   const distEntry = path.join(repoRoot, "dist", "index.html");
   if (existsSync(distEntry)) return;
@@ -20,11 +31,13 @@ async function ensurePreviewBuild() {
             cwd: repoRoot,
             stdio: "inherit",
             windowsHide: true,
+            env: smokeEnv(),
           })
         : spawn("npm", buildArgs, {
             cwd: repoRoot,
             stdio: "inherit",
             windowsHide: true,
+            env: smokeEnv(),
           });
 
       child.on("exit", (code) => {
@@ -101,11 +114,13 @@ export async function withPreviewPage(run, options = {}) {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
+        env: smokeEnv(),
       })
     : spawn("npm", previewArgs, {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
+        env: smokeEnv(),
       });
 
   let output = "";

@@ -158,6 +158,7 @@ npm run smoke:inspections
 默认会检查未登录时的路由跳转和登录页；如果要跑登录态分支，可以额外设置 `SMOKE_EMAIL` 和 `SMOKE_PASSWORD`。
 `npm run smoke:db` 会在本机 PostgreSQL 工具可用时起一个临时数据库，跑 schema、migration、RLS 和 trigger 验证；如果找不到 PostgreSQL 二进制，它会直接跳过。
 浏览器烟测会在 `dist/` 不存在时自动先执行一次 `npm run build`，再启动 preview。
+烟测进程会自动注入一组本地兜底的 Supabase / site 环境变量，不依赖仓库里的 `.env`。
 
 ## GitHub Pages 部署
 
