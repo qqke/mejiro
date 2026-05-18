@@ -14,6 +14,7 @@ function seedState() {
     profiles: [
       {
         id: "admin-user",
+        email: "admin@example.com",
         display_name: "管理者テスト",
         role: "admin",
         building: "A",
@@ -26,6 +27,7 @@ function seedState() {
       },
       {
         id: "board-user",
+        email: "board@example.com",
         display_name: "理事テスト",
         role: "board_member",
         building: "B",
@@ -38,6 +40,7 @@ function seedState() {
       },
       {
         id: "resident-user",
+        email: "resident@example.com",
         display_name: "住民テスト",
         role: "resident",
         building: "C",
@@ -435,6 +438,10 @@ function seedState() {
   return state;
 }
 
+function authAccountForEmail(state, email) {
+  return state.profiles.find((profile) => profile.email === email) ?? null;
+}
+
 function tableNameFromUrl(url) {
   const match = url.pathname.match(/\/rest\/v1\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : null;
@@ -544,8 +551,17 @@ function getTable(state, table) {
 }
 
 function nextId(state, prefix) {
-  state.counters[prefix] = (state.counters[prefix] ?? 0) + 1;
-  return createId(prefix, state.counters[prefix]);
+  const tables = Object.values(state).filter((value) => Array.isArray(value));
+  let counter = state.counters[prefix] ?? 0;
+
+  while (true) {
+    counter += 1;
+    const id = createId(prefix, counter);
+    if (!tables.some((rows) => rows.some((row) => row.id === id))) {
+      state.counters[prefix] = counter;
+      return id;
+    }
+  }
 }
 
 function uniqueMatch(table, payload, row) {
@@ -598,17 +614,18 @@ function applyUpdate(state, table, payload, url) {
   return updated;
 }
 
-function authResponse(state) {
+function authResponse(state, email) {
+  const profile = authAccountForEmail(state, email) ?? state.profiles[0];
   const user = {
-    id: "admin-user",
+    id: profile.id,
     aud: "authenticated",
     role: "authenticated",
-    email: "admin@example.com",
+    email: profile.email ?? "admin@example.com",
     phone: "",
-    created_at: iso("2026-05-01T00:00:00Z"),
-    updated_at: iso("2026-05-01T00:00:00Z"),
+    created_at: profile.created_at ?? iso("2026-05-01T00:00:00Z"),
+    updated_at: profile.updated_at ?? iso("2026-05-01T00:00:00Z"),
     app_metadata: {},
-    user_metadata: { display_name: "管理者テスト" },
+    user_metadata: { display_name: profile.display_name ?? "ユーザー" },
   };
 
   return {
@@ -628,11 +645,38 @@ export function createMockSupabaseBackend() {
     state,
     async install(page) {
       await page.route("**/auth/v1/token**", async (route) => {
-        const body = authResponse(state);
+        const request = route.request();
+        const payload = request.postDataJSON?.() ?? {};
+        const email = String(payload.email ?? "");
+        const password = String(payload.password ?? "");
+        const profile = authAccountForEmail(state, email);
+
+        if (!profile || password !== "password") {
+          await route.fulfill({
+            status: 400,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error: "invalid_grant",
+              error_description: "Invalid login credentials",
+              code: "invalid_credentials",
+            }),
+          });
+          return;
+        }
+
+        const body = authResponse(state, email);
         await route.fulfill({
           status: 200,
           contentType: "application/json",
           body: JSON.stringify(body),
+        });
+      });
+
+      await page.route("**/auth/v1/logout**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({}),
         });
       });
 

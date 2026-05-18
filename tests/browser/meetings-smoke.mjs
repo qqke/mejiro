@@ -3,6 +3,19 @@ import { assert, expectText, login, maybeFirstVisibleRole, waitForPath, withPrev
 const email = process.env.SMOKE_EMAIL ?? "";
 const password = process.env.SMOKE_PASSWORD ?? "";
 
+async function safeGoto(page, url, options) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await page.goto(url, options);
+    } catch (error) {
+      const message = String(error?.message ?? error);
+      if (!message.includes("ERR_ABORTED") || attempt === 1) {
+        throw error;
+      }
+    }
+  }
+}
+
 await withPreviewPage(async ({ page, baseUrl }) => {
   const pageErrors = [];
   const consoleErrors = [];
@@ -18,7 +31,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   if (!email || !password) {
     console.log("meetings: anonymous route check");
-    await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
+    await safeGoto(page, `${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
     console.log(`meetings: url after goto ${page.url()}`);
     await waitForPath(page, (pathname) => pathname === "/login/" || pathname === "/login");
     console.log(`meetings: url after redirect ${page.url()}`);
@@ -35,7 +48,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await login(page, baseUrl, email, password);
   console.log(`meetings: url after login ${page.url()}`);
   console.log("meetings: protected page");
-  await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
+  await safeGoto(page, `${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
   console.log(`meetings: url after protected goto ${page.url()}`);
   await page.locator("body[data-page='meetings']").waitFor({ state: "attached", timeout: 20000 });
   await expectText(page, "h1", "会議治理", "meetings heading");

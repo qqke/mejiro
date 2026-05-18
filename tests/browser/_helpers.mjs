@@ -56,7 +56,7 @@ export async function waitForPath(page, predicate, timeoutMs = 20000) {
   throw new Error(`Timed out waiting for page path on ${page.url()}`);
 }
 
-export async function withPreviewPage(run) {
+export async function withPreviewPage(run, options = {}) {
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const previewArgs = ["run", "preview", "--", "--host", "127.0.0.1", "--port", String(port)];
@@ -85,7 +85,7 @@ export async function withPreviewPage(run) {
     const browser = await chromium.launch({ headless: true });
 
     try {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+      const page = await browser.newPage({ viewport: options.viewport ?? { width: 1440, height: 1200 } });
       await run({ page, baseUrl, port, output: () => output });
     } finally {
       await Promise.race([

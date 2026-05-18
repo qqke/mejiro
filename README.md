@@ -84,6 +84,21 @@ where id = 'AUTH_USER_UUID';
 
 ## 初始化
 
+版本迁移对应关系：
+
+| 现有版本 | 需要补跑的迁移 |
+| --- | --- |
+| v1 | `v2_v3` -> `v4_v5` -> `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v3 | `v4_v5` -> `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v5 | `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v7 | `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v9 | `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v11 | `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v13 | `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v15 | `v16_v17` -> `v18_v19` -> `v20_v21` |
+| v17 | `v18_v19` -> `v20_v21` |
+| v19 | `v20_v21` |
+
 1. 创建 Supabase 项目。
 2. 新项目在 Supabase SQL Editor 中执行 `supabase/schema.sql`。
 3. 已经部署过 v1 的项目，依次执行 `supabase/v2_v3_migration.sql`、`supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
@@ -127,6 +142,13 @@ npm run build
 ## 浏览器烟测
 
 ```sh
+npm run smoke:schema
+npm run smoke:db
+npm run smoke:auth-permissions
+npm run smoke:validation
+npm run smoke:responsive
+npm run smoke:status-branches
+npm run smoke:empty-states
 npm run smoke
 npm run smoke:functionality
 npm run smoke:meetings
@@ -134,6 +156,7 @@ npm run smoke:inspections
 ```
 
 默认会检查未登录时的路由跳转和登录页；如果要跑登录态分支，可以额外设置 `SMOKE_EMAIL` 和 `SMOKE_PASSWORD`。
+`npm run smoke:db` 会在本机 PostgreSQL 工具可用时起一个临时数据库，跑 schema、migration、RLS 和 trigger 验证；如果找不到 PostgreSQL 二进制，它会直接跳过。
 
 ## GitHub Pages 部署
 
