@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -6,6 +7,40 @@ import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "playwright";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+let previewBuildPromise = null;
+
+async function ensurePreviewBuild() {
+  const distEntry = path.join(repoRoot, "dist", "index.html");
+  if (existsSync(distEntry)) return;
+  if (!previewBuildPromise) {
+    previewBuildPromise = new Promise((resolve, reject) => {
+      const buildArgs = ["run", "build"];
+      const child = process.platform === "win32"
+        ? spawn("cmd.exe", ["/c", "npm", ...buildArgs], {
+            cwd: repoRoot,
+            stdio: "inherit",
+            windowsHide: true,
+          })
+        : spawn("npm", buildArgs, {
+            cwd: repoRoot,
+            stdio: "inherit",
+            windowsHide: true,
+          });
+
+      child.on("exit", (code) => {
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`npm run build failed with exit code ${code}`));
+        }
+      });
+
+      child.on("error", reject);
+    });
+  }
+
+  await previewBuildPromise;
+}
 
 export async function getFreePort() {
   return await new Promise((resolve, reject) => {
@@ -57,6 +92,7 @@ export async function waitForPath(page, predicate, timeoutMs = 20000) {
 }
 
 export async function withPreviewPage(run, options = {}) {
+  await ensurePreviewBuild();
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const previewArgs = ["run", "preview", "--", "--host", "127.0.0.1", "--port", String(port)];
