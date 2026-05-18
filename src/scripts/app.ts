@@ -817,6 +817,9 @@ function normalizeLoginError(message: string) {
   if (message.includes("Invalid login credentials")) {
     return "メールアドレスまたはパスワードが正しくありません。";
   }
+  if (message.includes("Database error querying schema") || message.includes("unexpected_failure")) {
+    return "Supabase Auth のデータベース設定でエラーが発生しています。管理者に Auth Logs / Postgres Logs と未適用の schema.sql / migration を確認してもらってください。";
+  }
   return message;
 }
 

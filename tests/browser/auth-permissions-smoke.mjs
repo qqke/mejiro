@@ -24,6 +24,34 @@ async function runInvalidLoginCheck() {
   });
 }
 
+async function runAuthSchemaErrorCheck() {
+  await withPreviewPage(async ({ page, baseUrl }) => {
+    await page.route("**/auth/v1/token**", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          code: 500,
+          error_code: "unexpected_failure",
+          msg: "Database error querying schema",
+        }),
+      });
+    });
+
+    await page.goto(`${baseUrl}/login/`, { waitUntil: "domcontentloaded" });
+    await page.locator("#email").fill("resident@example.com");
+    await page.locator("#password").fill("password");
+    await page.locator("[data-login-form] button[type='submit']").click();
+
+    await expectText(
+      page,
+      "[data-status]",
+      "Supabase Auth のデータベース設定でエラーが発生しています。管理者に Auth Logs / Postgres Logs と未適用の schema.sql / migration を確認してもらってください。",
+      "auth schema error message",
+    );
+  });
+}
+
 async function runBoardAccessCheck() {
   await withPreviewPage(async ({ page, baseUrl }) => {
     const backend = createMockSupabaseBackend();
@@ -132,6 +160,7 @@ async function runDocumentRejectResubmitCheck() {
 }
 
 await runInvalidLoginCheck();
+await runAuthSchemaErrorCheck();
 await runBoardAccessCheck();
 await runResidentAccessCheck();
 await runDocumentStageRoleCheck("board@example.com", "board_review", "理事", "理事承認");
