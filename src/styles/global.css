@@ -639,6 +639,17 @@ h3 {
   color: var(--danger);
 }
 
+.login-note {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .login-page {
   min-height: 100svh;
   display: grid;

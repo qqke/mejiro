@@ -19,7 +19,7 @@ async function runInvalidLoginCheck() {
     await page.locator("#password").fill("wrong-password");
     await page.locator("[data-login-form] button[type='submit']").click();
 
-    await expectText(page, "[data-status]", "Invalid login credentials", "invalid login message");
+    await expectText(page, "[data-status]", "メールアドレスまたはパスワードが正しくありません。", "invalid login message");
     assert((await page.locator("body[data-page='login']").count()) === 1, "invalid login should stay on login page");
   });
 }
@@ -33,8 +33,14 @@ async function runBoardAccessCheck() {
 
     await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
     await page.locator("body[data-page='meetings']").waitFor({ state: "attached", timeout: 20000 });
-    assert((await page.locator("[data-meeting-form]").getAttribute("class"))?.includes("hidden") === false, "board member should see meeting form");
-    assert((await page.locator("[data-agenda-form]").getAttribute("class"))?.includes("hidden") === false, "board member should see agenda form");
+    await waitForCondition(async () => {
+      const className = await page.locator("[data-meeting-form]").getAttribute("class");
+      return Boolean(className && !className.includes("hidden"));
+    }, "board meeting form visibility");
+    await waitForCondition(async () => {
+      const className = await page.locator("[data-agenda-form]").getAttribute("class");
+      return Boolean(className && !className.includes("hidden"));
+    }, "board agenda form visibility");
     assert((await page.locator("[data-attendance-form]").count()) === 1, "board member should see attendance form");
     assert((await page.locator("[data-vote-form]").count()) === 1, "board member should see vote form");
 
@@ -57,8 +63,14 @@ async function runResidentAccessCheck() {
 
     await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
     await page.locator("body[data-page='meetings']").waitFor({ state: "attached", timeout: 20000 });
-    assert((await page.locator("[data-meeting-form]").getAttribute("class"))?.includes("hidden") ?? false, "resident should not see meeting form");
-    assert((await page.locator("[data-agenda-form]").getAttribute("class"))?.includes("hidden") ?? false, "resident should not see agenda form");
+    await waitForCondition(async () => {
+      const className = await page.locator("[data-meeting-form]").getAttribute("class");
+      return Boolean(className && className.includes("hidden"));
+    }, "resident meeting form hidden");
+    await waitForCondition(async () => {
+      const className = await page.locator("[data-agenda-form]").getAttribute("class");
+      return Boolean(className && className.includes("hidden"));
+    }, "resident agenda form hidden");
     assert((await page.locator("[data-attendance-form]").count()) === 1, "resident should still see attendance form");
     assert((await page.locator("[data-vote-form]").count()) === 1, "resident should still see vote form");
 

@@ -112,8 +112,8 @@ where id = 'AUTH_USER_UUID';
 11. 已经部署到 v17 的项目，只需要执行 `supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`。
 12. 已经部署到 v19 的项目，只需要执行 `supabase/v20_v21_migration.sql`。
 13. 参考 `.env.example` 创建本地 `.env`。
-14. 在 Supabase Dashboard 的 Authentication / Users 中创建用户。
-15. 按需在 `public.profiles` 中调整用户角色。
+14. 在 Supabase Dashboard 的 Authentication / Users 中创建用户，或者直接执行 `supabase/admin_user.sql`。
+15. 按需在 `public.profiles` 中调整用户角色，管理员需要 `role = 'admin'`。
 
 ## 环境变量
 

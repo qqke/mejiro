@@ -813,6 +813,13 @@ function requireClient() {
   return null;
 }
 
+function normalizeLoginError(message: string) {
+  if (message.includes("Invalid login credentials")) {
+    return "メールアドレスまたはパスワードが正しくありません。";
+  }
+  return message;
+}
+
 function route(path: string) {
   return `${base}${path.replace(/^\//, "")}`;
 }
@@ -896,7 +903,7 @@ async function initLogin() {
       password: String(form.get("password")),
     });
     if (error) {
-      setStatus("[data-status]", error.message, true);
+      setStatus("[data-status]", normalizeLoginError(error.message), true);
       return;
     }
     window.location.href = route("/");
