@@ -808,7 +808,7 @@ function isAdmin() {
 
 function requireClient() {
   if (!hasSupabaseConfig || !supabase) {
-    return "Supabase 環境変数が未設定です。.env の PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY を設定してください。";
+    return "環境変数が未設定です。.env の必要項目を設定してください。";
   }
   return null;
 }
@@ -818,7 +818,7 @@ function normalizeLoginError(message: string) {
     return "メールアドレスまたはパスワードが正しくありません。";
   }
   if (message.includes("Database error querying schema") || message.includes("unexpected_failure")) {
-    return "Supabase Auth のデータベース設定でエラーが発生しています。管理者に Auth Logs / Postgres Logs と未適用の schema.sql / migration を確認してもらってください。";
+    return "認証またはデータベース設定でエラーが発生しています。管理者にログと未適用の schema.sql / migration を確認してもらってください。";
   }
   return message;
 }
@@ -840,7 +840,7 @@ async function init() {
   if (configError) {
     setStatus("[data-status]", configError, true);
     setText("[data-user-name]", "未設定");
-    setText("[data-user-role]", "Supabase 接続なし");
+    setText("[data-user-role]", "接続設定なし");
     return;
   }
 
@@ -1257,6 +1257,19 @@ function renderPendingBookings(bookings: Booking[]) {
 }
 
 async function updateBookingStatus(id: string, status: BookingStatus) {
+  if (status === "approved") {
+    const booking = bookingsCache.find((item) => item.id === id);
+    if (!booking) {
+      alert("予約情報を読み込めませんでした。");
+      return;
+    }
+    const hasOverlap = await checkBookingOverlap(booking.room_id, booking.start_at, booking.end_at, booking.id);
+    if (hasOverlap) {
+      alert("同じ時間帯に既に承認済みの予約があるため承認できません。");
+      return;
+    }
+  }
+
   const { error } = await supabase!
     .from("room_bookings")
     .update({ status, approved_by: currentProfile!.id, approved_at: new Date().toISOString() })
@@ -1268,8 +1281,8 @@ async function updateBookingStatus(id: string, status: BookingStatus) {
   await refreshBookingCalendar();
 }
 
-async function checkBookingOverlap(roomId: string, startAt: string, endAt: string) {
-  const { data } = await supabase!
+async function checkBookingOverlap(roomId: string, startAt: string, endAt: string, excludeBookingId?: string) {
+  let query = supabase!
     .from("room_bookings")
     .select("id")
     .eq("room_id", roomId)
@@ -1277,6 +1290,12 @@ async function checkBookingOverlap(roomId: string, startAt: string, endAt: strin
     .lt("start_at", endAt)
     .gt("end_at", startAt)
     .limit(1);
+
+  if (excludeBookingId) {
+    query = query.neq("id", excludeBookingId);
+  }
+
+  const { data } = await query;
   return Boolean(data?.length);
 }
 

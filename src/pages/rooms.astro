@@ -31,6 +31,10 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from "@lucide
           <button class="segment" type="button" data-calendar-view="timeGridDay">日</button>
         </div>
       </div>
+      <div class="calendar-legend" aria-label="予約状態の凡例">
+        <span class="legend-item"><span class="legend-dot pending"></span>承認待ち</span>
+        <span class="legend-item"><span class="legend-dot approved"></span>承認済み</span>
+      </div>
       <div class="visual-calendar" data-booking-calendar></div>
     </div>
 
