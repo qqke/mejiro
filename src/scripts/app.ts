@@ -462,6 +462,8 @@ let eventMonth = new Date();
 let bookingCalendar: CalendarInstance | null = null;
 let roomsCache: Room[] = [];
 let bookingsCache: Booking[] = [];
+let activeBookingId: string | null = null;
+let bookingHoverCard: HTMLDivElement | null = null;
 let documentFilter: DocumentStatus | "all" = "all";
 let maintenanceFilter: MaintenanceStatus | "all" = "all";
 let financeFilter: FinanceEntryType | "all" = "all";
@@ -858,6 +860,7 @@ async function init() {
   currentProfile = await loadProfile(data.session.user.id, data.session.user.email ?? "");
   setText("[data-user-name]", currentProfile.display_name || data.session.user.email || "ユーザー");
   setText("[data-user-role]", roleLabels[currentProfile.role]);
+  initSidebarMenu();
 
   qs("[data-action='sign-out']")?.addEventListener("click", async () => {
     await supabase!.auth.signOut();
@@ -886,6 +889,35 @@ async function init() {
   if (page === "meetings") await initMeetings();
   if (page === "inspections") await initInspections();
   if (page === "admin") await initAdmin();
+}
+
+function initSidebarMenu() {
+  const sidebar = qs<HTMLElement>(".sidebar");
+  const toggle = qs<HTMLButtonElement>("[data-sidebar-toggle]");
+  if (!sidebar || !toggle) return;
+
+  const mobileQuery = window.matchMedia("(max-width: 900px)");
+  const syncExpandedState = () => {
+    const shouldExpand = !mobileQuery.matches;
+    sidebar.classList.toggle("is-expanded", shouldExpand);
+    toggle.setAttribute("aria-expanded", String(shouldExpand));
+  };
+
+  syncExpandedState();
+  mobileQuery.addEventListener("change", syncExpandedState);
+
+  toggle.addEventListener("click", () => {
+    const expanded = sidebar.classList.toggle("is-expanded");
+    toggle.setAttribute("aria-expanded", String(expanded));
+  });
+
+  qsa<HTMLAnchorElement>(".nav .nav-link").forEach((link) => {
+    link.addEventListener("click", () => {
+      if (!mobileQuery.matches) return;
+      sidebar.classList.remove("is-expanded");
+      toggle.setAttribute("aria-expanded", "false");
+    });
+  });
 }
 
 async function initLogin() {
@@ -973,6 +1005,7 @@ async function initHome() {
 async function initRooms() {
   await loadRoomsIntoSelect();
   await initBookingCalendar();
+  bindBookingModal();
 
   qs<HTMLFormElement>("[data-booking-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1053,6 +1086,7 @@ async function initBookingCalendar() {
     slotMaxTime: "22:00:00",
     slotDuration: "00:30:00",
     expandRows: true,
+    displayEventTime: false,
     eventTimeFormat: {
       hour: "2-digit",
       minute: "2-digit",
@@ -1067,7 +1101,24 @@ async function initBookingCalendar() {
     },
     eventClick: (info) => {
       const booking = bookingsCache.find((item) => item.id === info.event.id);
-      if (booking) renderBookingDetail(booking);
+      if (!booking) return;
+      renderBookingDetail(booking);
+      if (canEditBooking(booking)) {
+        openBookingModal(booking);
+      }
+    },
+    eventDidMount: (info) => {
+      const booking = bookingsCache.find((item) => item.id === info.event.id);
+      if (!booking) return;
+      const show = () => showBookingHoverCard(booking, info.el as HTMLElement);
+      const hide = () => hideBookingHoverCard();
+      info.el.addEventListener("mouseenter", show);
+      info.el.addEventListener("mouseleave", hide);
+      info.el.addEventListener("focusin", show);
+      info.el.addEventListener("focusout", hide);
+    },
+    eventWillUnmount: () => {
+      hideBookingHoverCard();
     },
     events: async (_info, success, failure) => {
       try {
@@ -1126,10 +1177,16 @@ async function refreshBookingCalendar() {
 }
 
 async function loadBookings() {
-  const { data } = await supabase!
+  const { data, error } = await supabase!
     .from("room_bookings")
-    .select("id, room_id, user_id, purpose, start_at, end_at, status, rooms(name), profiles(display_name)")
+    .select("id, room_id, user_id, purpose, start_at, end_at, status, rooms(name), profiles:profiles!room_bookings_user_id_fkey(display_name)")
     .order("start_at");
+
+  if (error) {
+    setStatus("[data-booking-status]", `予約読み込みに失敗しました: ${error.message}`, true);
+    bookingsCache = [];
+    return bookingsCache;
+  }
 
   bookingsCache = (data ?? []) as Booking[];
   return bookingsCache;
@@ -1145,7 +1202,7 @@ function toCalendarEvent(booking: Booking) {
   const roomColor = roomColorFor(booking.room_id);
   return {
     id: booking.id,
-    title: `${booking.rooms?.name ?? "会議室"} / ${booking.purpose}`,
+    title: booking.purpose,
     start: booking.start_at,
     end: booking.end_at,
     backgroundColor: colors.background,
@@ -1156,6 +1213,7 @@ function toCalendarEvent(booking: Booking) {
       roomId: booking.room_id,
       applicant: booking.profiles?.display_name ?? "申請者",
       purpose: booking.purpose,
+      roomName: booking.rooms?.name ?? "会議室",
     },
   };
 }
@@ -1183,7 +1241,9 @@ function renderBookingDetail(booking: Booking) {
   const detail = qs("[data-booking-detail]");
   const body = qs("[data-booking-detail-body]");
   const actions = qs("[data-booking-detail-actions]");
-  if (!detail || !body || !actions) return;
+  const editToggle = qs("[data-booking-detail-edit-toggle]");
+  if (!detail || !body || !actions || !editToggle) return;
+  activeBookingId = booking.id;
 
   body.innerHTML = `
     <div class="detail-stack">
@@ -1210,10 +1270,174 @@ function renderBookingDetail(booking: Booking) {
     </div>
   `;
 
+  const editable = canEditBooking(booking);
+  editToggle.classList.toggle("hidden", !editable);
+  actions.classList.toggle("hidden", !canManage() || booking.status !== "pending");
+
+  qs<HTMLButtonElement>("[data-detail-edit]")!.onclick = () => {
+    openBookingModal(booking);
+  };
+
   actions.classList.toggle("hidden", !canManage() || booking.status !== "pending");
   qs<HTMLButtonElement>("[data-detail-approve]")!.onclick = () => updateBookingStatus(booking.id, "approved");
   qs<HTMLButtonElement>("[data-detail-reject]")!.onclick = () => updateBookingStatus(booking.id, "rejected");
   detail.classList.remove("hidden");
+}
+
+function canEditBooking(booking: Booking) {
+  return booking.status === "pending" && (booking.user_id === currentProfile?.id || canManage());
+}
+
+function openBookingModal(booking: Booking) {
+  activeBookingId = booking.id;
+  const modal = qs("[data-booking-modal]");
+  const roomSelect = qs<HTMLSelectElement>("[data-modal-room-select]");
+  const startInput = qs<HTMLInputElement>("#modal-start-at");
+  const endInput = qs<HTMLInputElement>("#modal-end-at");
+  const purposeInput = qs<HTMLTextAreaElement>("#modal-purpose");
+  if (!modal || !roomSelect || !startInput || !endInput || !purposeInput) return;
+
+  roomSelect.innerHTML = roomsCache.map((room) => `<option value="${room.id}">${escapeHtml(room.name)}</option>`).join("");
+  roomSelect.value = booking.room_id;
+  startInput.value = toDateTimeLocal(new Date(booking.start_at));
+  endInput.value = toDateTimeLocal(new Date(booking.end_at));
+  purposeInput.value = booking.purpose;
+  setStatus("[data-booking-modal-status]", "");
+  modal.classList.remove("hidden");
+}
+
+function closeBookingModal() {
+  qs("[data-booking-modal]")?.classList.add("hidden");
+  setStatus("[data-booking-modal-status]", "");
+}
+
+function bindBookingModal() {
+  qs("[data-booking-modal-close]")?.addEventListener("click", () => closeBookingModal());
+  qs("[data-booking-modal]")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeBookingModal();
+  });
+
+  qs<HTMLFormElement>("[data-booking-modal-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement) || !activeBookingId) return;
+    const original = bookingsCache.find((booking) => booking.id === activeBookingId);
+    if (!original || !canEditBooking(original)) {
+      setStatus("[data-booking-modal-status]", "この予約は編集できません。", true);
+      return;
+    }
+
+    const form = new FormData(formElement);
+    const roomId = String(form.get("room_id"));
+    const startAt = new Date(String(form.get("start_at")));
+    const endAt = new Date(String(form.get("end_at")));
+    const purpose = String(form.get("purpose"));
+
+    if (endAt <= startAt) {
+      setStatus("[data-booking-modal-status]", "終了時間は開始時間より後にしてください。", true);
+      return;
+    }
+
+    const hasOverlap = await checkBookingOverlap(roomId, startAt.toISOString(), endAt.toISOString(), original.id);
+    if (hasOverlap) {
+      setStatus("[data-booking-modal-status]", "同じ時間帯に承認済み予約があります。", true);
+      return;
+    }
+
+    let error: { message: string } | null = null;
+    if (canManage()) {
+      const result = await supabase!
+        .from("room_bookings")
+        .update({
+          room_id: roomId,
+          start_at: startAt.toISOString(),
+          end_at: endAt.toISOString(),
+          purpose,
+        })
+        .eq("id", original.id);
+      error = result.error ? { message: result.error.message } : null;
+    } else {
+      const result = await supabase!.rpc("update_own_pending_booking", {
+        p_booking_id: original.id,
+        p_room_id: roomId,
+        p_start_at: startAt.toISOString(),
+        p_end_at: endAt.toISOString(),
+        p_purpose: purpose,
+      });
+      error = result.error ? { message: result.error.message } : null;
+    }
+
+    if (error) {
+      setStatus("[data-booking-modal-status]", error.message, true);
+      return;
+    }
+
+    setStatus("[data-booking-modal-status]", "予約を更新しました。");
+    await refreshBookingCalendar();
+    const updated = bookingsCache.find((booking) => booking.id === original.id);
+    if (updated) renderBookingDetail(updated);
+    closeBookingModal();
+  });
+
+  qs<HTMLButtonElement>("[data-booking-delete]")?.addEventListener("click", async () => {
+    if (!activeBookingId) return;
+    const original = bookingsCache.find((booking) => booking.id === activeBookingId);
+    if (!original || !canEditBooking(original)) {
+      setStatus("[data-booking-modal-status]", "この予約は削除できません。", true);
+      return;
+    }
+
+    let error: { message: string } | null = null;
+    if (canManage()) {
+      const result = await supabase!
+        .from("room_bookings")
+        .update({ status: "cancelled" })
+        .eq("id", original.id);
+      error = result.error ? { message: result.error.message } : null;
+    } else {
+      const result = await supabase!.rpc("cancel_own_pending_booking", {
+        p_booking_id: original.id,
+      });
+      error = result.error ? { message: result.error.message } : null;
+    }
+    if (error) {
+      setStatus("[data-booking-modal-status]", error.message, true);
+      return;
+    }
+
+    setStatus("[data-booking-modal-status]", "予約を取消しました。");
+    await refreshBookingCalendar();
+    qs("[data-booking-detail]")?.classList.add("hidden");
+    closeBookingModal();
+  });
+}
+
+function bookingHoverContent(booking: Booking) {
+  return `
+    <div><strong>${escapeHtml(booking.purpose)}</strong></div>
+    <div>${escapeHtml(booking.rooms?.name ?? "会議室")} / ${statusLabels[booking.status]}</div>
+    <div>${formatDateTime(booking.start_at)} - ${formatDateTime(booking.end_at)}</div>
+    <div>申請者: ${escapeHtml(booking.profiles?.display_name ?? "申請者")}</div>
+  `;
+}
+
+function showBookingHoverCard(booking: Booking, target: HTMLElement) {
+  hideBookingHoverCard();
+  const card = document.createElement("div");
+  card.className = "booking-hover-card";
+  card.innerHTML = bookingHoverContent(booking);
+  document.body.append(card);
+  const rect = target.getBoundingClientRect();
+  const top = window.scrollY + rect.top - card.offsetHeight - 10;
+  const left = window.scrollX + Math.min(rect.left, window.innerWidth - card.offsetWidth - 12);
+  card.style.top = `${Math.max(window.scrollY + 8, top)}px`;
+  card.style.left = `${Math.max(window.scrollX + 8, left)}px`;
+  bookingHoverCard = card;
+}
+
+function hideBookingHoverCard() {
+  bookingHoverCard?.remove();
+  bookingHoverCard = null;
 }
 
 function renderPendingBookings(bookings: Booking[]) {

@@ -71,6 +71,9 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from "@lucide
           </button>
         </div>
         <div class="booking-detail-body" data-booking-detail-body></div>
+        <div class="toolbar hidden" data-booking-detail-edit-toggle>
+          <button class="button secondary" type="button" data-detail-edit>編集・削除</button>
+        </div>
         <div class="toolbar hidden" data-booking-detail-actions>
           <button class="button" type="button" data-detail-approve><Check size={16} aria-hidden="true" />承認</button>
           <button class="button danger" type="button" data-detail-reject><X size={16} aria-hidden="true" />却下</button>
@@ -83,4 +86,40 @@ import { CalendarDays, Check, ChevronLeft, ChevronRight, Plus, X } from "@lucide
       </div>
     </aside>
   </section>
+
+  <div class="modal-backdrop hidden" data-booking-modal>
+    <div class="modal panel">
+      <div class="list-row">
+        <h2>予約編集</h2>
+        <button class="icon-button secondary" type="button" data-booking-modal-close aria-label="閉じる">
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <form class="grid" data-booking-modal-form>
+        <div class="field">
+          <label for="modal-room-id">会議室</label>
+          <select class="select" id="modal-room-id" name="room_id" required data-modal-room-select></select>
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="modal-start-at">開始</label>
+            <input class="input" id="modal-start-at" name="start_at" type="datetime-local" required />
+          </div>
+          <div class="field">
+            <label for="modal-end-at">終了</label>
+            <input class="input" id="modal-end-at" name="end_at" type="datetime-local" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="modal-purpose">利用目的</label>
+          <textarea class="textarea" id="modal-purpose" name="purpose" required></textarea>
+        </div>
+        <div class="toolbar">
+          <button class="button" type="submit">保存する</button>
+          <button class="button danger" type="button" data-booking-delete>削除（取消）</button>
+        </div>
+        <p class="status" data-booking-modal-status></p>
+      </form>
+    </div>
+  </div>
 </AppLayout>

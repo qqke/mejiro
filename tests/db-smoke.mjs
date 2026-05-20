@@ -215,6 +215,7 @@ const schemaPath = path.join(repoRoot, "supabase", "schema.sql");
 const v18v19Path = path.join(repoRoot, "supabase", "v18_v19_migration.sql");
 const v20v21Path = path.join(repoRoot, "supabase", "v20_v21_migration.sql");
 const v22v23Path = path.join(repoRoot, "supabase", "v22_v23_migration.sql");
+const v23v24Path = path.join(repoRoot, "supabase", "v23_v24_migration.sql");
 
 const cluster = await createTempCluster();
 if (!cluster) {
@@ -263,6 +264,7 @@ grant execute on function auth.uid() to authenticated;
 \i '${toPosixPath(v18v19Path)}'
 \i '${toPosixPath(v20v21Path)}'
 \i '${toPosixPath(v22v23Path)}'
+\i '${toPosixPath(v23v24Path)}'
 
 insert into auth.users (id, email, raw_user_meta_data)
 values

@@ -11,6 +11,7 @@ import {
   FileText,
   HandCoins,
   Home,
+  Menu,
   LogOut,
   MessageSquareWarning,
   KeyRound,
@@ -103,7 +104,18 @@ const navItems = [
           </span>
         </a>
 
-        <nav class="nav" aria-label="主要ナビゲーション">
+        <button
+          class="button secondary sidebar-toggle"
+          type="button"
+          data-sidebar-toggle
+          aria-expanded="false"
+          aria-controls="primary-navigation"
+        >
+          <Menu size={16} aria-hidden="true" />
+          メニュー
+        </button>
+
+        <nav class="nav" id="primary-navigation" aria-label="主要ナビゲーション">
           {
             navItems.map((item) => {
               const Icon = item.icon;
