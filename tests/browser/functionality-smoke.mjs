@@ -115,13 +115,17 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   await page.goto(`${baseUrl}/documents/`, { waitUntil: "domcontentloaded" });
   await waitPage(page, "documents");
+  assert((await page.locator("#document-url").count()) === 0, "document form should not include URL input");
   await fillSubmit(page, "[data-document-form]", {
     title: "議事録テスト",
     kind: "minutes",
     version: "2.0",
-    summary: "議事録の要約",
-    file_url: "",
+    markdown_body: "# 議事録テスト\n\n議事録の要約\n\n- Markdown本文",
   });
+  await waitForCondition(
+    () => backend.state.management_documents.some((document) => document.title === "議事録テスト" && document.file_url == null && document.summary.includes("議事録の要約")),
+    "document markdown insert",
+  );
   const createdDocument = page.locator("[data-document-list] .list-item").filter({ hasText: "議事録テスト" });
   await waitForCount(createdDocument, 1, "created document row");
   await createdDocument.locator("[data-document-approve]").click();

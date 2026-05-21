@@ -515,6 +515,12 @@ h3 {
   margin-bottom: 14px;
 }
 
+.document-markdown-input {
+  min-height: 260px;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  line-height: 1.6;
+}
+
 .document-workspace {
   margin-top: 16px;
 }

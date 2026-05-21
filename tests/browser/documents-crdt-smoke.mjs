@@ -24,6 +24,8 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await login(page, baseUrl, "admin@example.com", "password");
   await page.goto(`${baseUrl}/documents/`, { waitUntil: "domcontentloaded" });
   await waitPage(page, "documents");
+  assert((await page.locator("#document-url").count()) === 0, "document registration should not expose file URL");
+  assert((await page.locator("[name='markdown_body']").count()) === 1, "document registration should expose markdown body");
 
   const row = page.locator("[data-document-list] .list-item").filter({ hasText: "管理規約改定案" });
   await row.locator("[data-document-open]").click();
@@ -59,6 +61,10 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   const printText = await page.locator("[data-document-print-view]").textContent();
   assert(printText.includes("管理規約改定案"), "print view should include document title");
   assert(printText.includes("第三条を追加"), "print view should include latest markdown");
+  await waitForCondition(
+    () => page.evaluate(() => window.__MEJIRO_PRINT_CALLED__ === true),
+    "browser print call",
+  );
 
   const channelEvents = backend.realtimeEvents.filter((event) => event.topic === "document-crdt:doc-1");
   assert(channelEvents.some((event) => event.event === "y-update"), "editor should broadcast Yjs document updates");

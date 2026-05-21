@@ -51,12 +51,8 @@ import { Check, FileCheck2, FileText, GitCompare, Plus, Printer, Save, Stamp, Us
         </div>
       </div>
       <div class="field">
-        <label for="document-url">参照 URL</label>
-        <input class="input" id="document-url" name="file_url" type="url" placeholder="https://..." />
-      </div>
-      <div class="field">
-        <label for="document-summary">概要</label>
-        <textarea class="textarea" id="document-summary" name="summary" required></textarea>
+        <label for="document-markdown">Markdown 本文</label>
+        <textarea class="textarea document-markdown-input" id="document-markdown" name="markdown_body" required placeholder="# 文書タイトル&#10;&#10;本文をMarkdownで入力してください。"></textarea>
       </div>
       <button class="button" type="submit">審査へ回す</button>
       <p class="status" data-document-status></p>

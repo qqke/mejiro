@@ -1756,13 +1756,14 @@ async function initDocuments() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
+    const title = String(form.get("title"));
+    const markdownBody = String(form.get("markdown_body") || "").trim();
     const { error } = await supabase!.from("management_documents").insert({
-      title: String(form.get("title")),
+      title,
       kind: String(form.get("kind")),
       version: String(form.get("version") || "1.0"),
-      summary: String(form.get("summary")),
-      file_url: String(form.get("file_url") || "") || null,
-      markdown_body: `# ${String(form.get("title"))}\n\n${String(form.get("summary"))}`,
+      summary: summarizeMarkdown(markdownBody, title),
+      markdown_body: markdownBody,
       status: "board_review",
       created_by: currentProfile!.id,
       updated_by: currentProfile!.id,
@@ -1856,8 +1857,8 @@ function renderDocumentList(documents: ManagementDocument[]) {
             </div>
             ${documentStatusBadge(document.status)}
           </div>
-          <p>${escapeHtml(document.summary)}</p>
-          <p class="meta">登録者 ${escapeHtml(document.profiles?.display_name ?? "管理者")}${document.file_url ? ` / <a class="text-link" href="${escapeHtml(document.file_url)}" target="_blank" rel="noreferrer">参照ファイル</a>` : ""}</p>
+          <p>${escapeHtml(documentListExcerpt(document))}</p>
+          <p class="meta">登録者 ${escapeHtml(document.profiles?.display_name ?? "管理者")}</p>
           ${
             canManageDocuments()
               ? `<div class="toolbar">
@@ -2162,6 +2163,7 @@ function renderActiveDocumentPrintView() {
     </div>
     <article class="markdown-preview">${renderMarkdown(documentCollab.ytext.toString())}</article>
   `;
+  window.setTimeout(() => window.print(), 50);
 }
 
 function renderMarkdownPreview(markdown: string) {
@@ -2240,6 +2242,20 @@ function nextDocumentVersionLabel(versions: DocumentVersion[]) {
 
 function documentMarkdown(document: ManagementDocument) {
   return document.markdown_body || `# ${document.title}\n\n${document.summary}`;
+}
+
+function summarizeMarkdown(markdown: string, fallback: string) {
+  const summary = markdown
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#{1,6}\s+/, "").replace(/^[-*]\s+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" / ");
+  return summary.slice(0, 180) || fallback;
+}
+
+function documentListExcerpt(document: ManagementDocument) {
+  return summarizeMarkdown(document.markdown_body || document.summary, document.summary || document.title);
 }
 
 function colorForUser(id: string) {

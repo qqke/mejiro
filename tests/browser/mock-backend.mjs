@@ -697,6 +697,10 @@ export function createMockSupabaseBackend() {
         realtimeEvents.push(event);
       });
       await page.addInitScript(() => {
+        window.__MEJIRO_PRINT_CALLED__ = false;
+        window.print = () => {
+          window.__MEJIRO_PRINT_CALLED__ = true;
+        };
         const channels = new Map();
         window.__MEJIRO_MOCK_REALTIME__ = {
           channel(topic) {
