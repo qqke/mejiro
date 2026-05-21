@@ -216,6 +216,7 @@ const v18v19Path = path.join(repoRoot, "supabase", "v18_v19_migration.sql");
 const v20v21Path = path.join(repoRoot, "supabase", "v20_v21_migration.sql");
 const v22v23Path = path.join(repoRoot, "supabase", "v22_v23_migration.sql");
 const v23v24Path = path.join(repoRoot, "supabase", "v23_v24_migration.sql");
+const v24v25Path = path.join(repoRoot, "supabase", "v24_v25_migration.sql");
 
 const cluster = await createTempCluster();
 if (!cluster) {
@@ -265,6 +266,7 @@ grant execute on function auth.uid() to authenticated;
 \i '${toPosixPath(v20v21Path)}'
 \i '${toPosixPath(v22v23Path)}'
 \i '${toPosixPath(v23v24Path)}'
+\i '${toPosixPath(v24v25Path)}'
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -351,6 +353,15 @@ begin
     raise exception 'resident should not be able to update room bookings';
   end if;
 
+  begin
+    insert into public.management_documents (title, kind, version, summary, markdown_body, status, created_by, updated_by)
+    values ('resident forbidden doc', 'other', '1.0', 'forbidden', '# forbidden', 'board_review', auth.uid(), auth.uid());
+    raise exception 'resident should not be able to insert management documents';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
   insert into public.meeting_attendances (meeting_id, user_id, status, proxy_to, note)
   values ('66666666-6666-6666-6666-666666666661', auth.uid(), 'attending', null, 'resident attendance');
 
@@ -412,6 +423,51 @@ begin
 
   if actual <> 1 then
     raise exception 'board member inspection insert failed';
+  end if;
+
+  insert into public.management_documents (id, title, kind, version, summary, markdown_body, status, created_by, updated_by)
+  values (
+    '99999999-9999-9999-9999-999999999991',
+    'DB Markdown Document',
+    'rule',
+    '1.0',
+    'markdown summary',
+    '# DB Markdown Document',
+    'board_review',
+    auth.uid(),
+    auth.uid()
+  );
+
+  insert into public.document_versions (id, document_id, version_label, markdown_body, summary, created_by)
+  values (
+    '99999999-9999-9999-9999-999999999992',
+    '99999999-9999-9999-9999-999999999991',
+    'v1',
+    '# DB Markdown Document',
+    'saved from db smoke',
+    auth.uid()
+  );
+
+  insert into public.document_crdt_snapshots (id, document_id, yjs_update, markdown_body, created_by)
+  values (
+    '99999999-9999-9999-9999-999999999993',
+    '99999999-9999-9999-9999-999999999991',
+    decode('000102', 'hex'),
+    '# DB Markdown Document',
+    auth.uid()
+  );
+
+  update public.management_documents
+  set current_version_id = '99999999-9999-9999-9999-999999999992',
+      crdt_snapshot_id = '99999999-9999-9999-9999-999999999993'
+  where id = '99999999-9999-9999-9999-999999999991';
+
+  select count(*) into actual
+  from public.document_versions
+  where document_id = '99999999-9999-9999-9999-999999999991';
+
+  if actual <> 1 then
+    raise exception 'board member document version insert failed';
   end if;
 end
 $$;

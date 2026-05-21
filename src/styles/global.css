@@ -515,6 +515,143 @@ h3 {
   margin-bottom: 14px;
 }
 
+.document-workspace {
+  margin-top: 16px;
+}
+
+.workspace-head,
+.collab-strip,
+.document-version-grid,
+.document-editor-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.workspace-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.collab-strip {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  margin: 16px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.presence-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presence-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--presence-color), transparent 35%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--presence-color), transparent 88%);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.document-editor-grid,
+.document-version-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.document-editor {
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #101b18;
+}
+
+.document-editor .cm-editor {
+  min-height: 420px;
+  background: #101b18;
+  color: #edf7f3;
+  font-size: 14px;
+}
+
+.document-editor .cm-content {
+  min-height: 420px;
+  padding: 18px;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.markdown-preview {
+  min-height: 420px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+  margin: 0 0 12px;
+}
+
+.markdown-preview p,
+.markdown-preview li {
+  line-height: 1.75;
+}
+
+.document-diff {
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #101b18;
+  color: #edf7f3;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+}
+
+.diff-line {
+  padding: 6px 10px;
+  white-space: pre-wrap;
+}
+
+.diff-line.added {
+  background: rgba(22, 112, 68, 0.24);
+}
+
+.diff-line.removed {
+  background: rgba(170, 54, 54, 0.24);
+}
+
+.document-print-view {
+  margin-top: 16px;
+}
+
+@media print {
+  .sidebar,
+  .topbar,
+  .page-head,
+  .grid,
+  .document-workspace,
+  [data-document-list],
+  [data-document-approvals],
+  [data-document-seals] {
+    display: none !important;
+  }
+
+  .document-print-view {
+    display: block !important;
+    border: 0;
+    box-shadow: none;
+  }
+}
+
 .task-filters {
   margin-bottom: 14px;
 }

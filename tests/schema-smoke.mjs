@@ -16,10 +16,11 @@ const schema = await read("supabase/schema.sql");
 const v18v19 = await read("supabase/v18_v19_migration.sql");
 const v20v21 = await read("supabase/v20_v21_migration.sql");
 const v22v23 = await read("supabase/v22_v23_migration.sql");
+const v24v25 = await read("supabase/v24_v25_migration.sql");
 
 function getPublicTables(sql) {
   const tables = [];
-  const pattern = /create table public\.([a-z0-9_]+) \(/gi;
+  const pattern = /create table(?: if not exists)? public\.([a-z0-9_]+) \(/gi;
   for (const match of sql.matchAll(pattern)) {
     tables.push(match[1]);
   }
@@ -95,6 +96,21 @@ for (const bit of [
   assert(v22v23.includes(bit), `v22_v23_migration.sql should include ${bit}`);
 }
 
+for (const bit of [
+  "markdown_body",
+  "current_version_id",
+  "crdt_snapshot_id",
+  "document_versions",
+  "document_crdt_snapshots",
+  "documents_versions_manager_insert",
+  "document_crdt_snapshots_manager_insert",
+  "grant select, insert on public.document_versions to authenticated;",
+  "grant select, insert on public.document_crdt_snapshots to authenticated;",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v24v25.includes(bit), `v24_v25_migration.sql should include ${bit}`);
+}
+
 assert(schema.includes("create trigger"), "schema.sql should include triggers");
 assert(schema.includes("alter table"), "schema.sql should include table alterations");
 
@@ -114,4 +130,10 @@ for (const table of getPublicTables(v20v21)) {
   assert(hasRls(v20v21, table), `v20_v21_migration.sql should enable RLS on public.${table}`);
   assert(hasGrant(v20v21, table), `v20_v21_migration.sql should grant authenticated access to public.${table}`);
   assert(hasPolicy(v20v21, table), `v20_v21_migration.sql should define a policy for public.${table}`);
+}
+
+for (const table of getPublicTables(v24v25)) {
+  assert(hasRls(v24v25, table), `v24_v25_migration.sql should enable RLS on public.${table}`);
+  assert(hasGrant(v24v25, table), `v24_v25_migration.sql should grant authenticated access to public.${table}`);
+  assert(hasPolicy(v24v25, table), `v24_v25_migration.sql should define a policy for public.${table}`);
 }

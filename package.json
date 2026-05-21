@@ -19,10 +19,16 @@
     "smoke:responsive": "node tests/browser/responsive-smoke.mjs",
     "smoke:status-branches": "node tests/browser/status-branches-smoke.mjs",
     "smoke:empty-states": "node tests/browser/empty-states-smoke.mjs",
+    "smoke:documents-crdt": "node tests/browser/documents-crdt-smoke.mjs",
     "smoke": "node tests/browser/run-smoke.mjs",
     "astro": "astro"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.0",
     "@fullcalendar/core": "^6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",
     "@fullcalendar/interaction": "^6.1.20",
@@ -30,7 +36,11 @@
     "@lucide/astro": "^1.16.0",
     "@supabase/supabase-js": "^2.105.4",
     "animejs": "^4.4.1",
-    "astro": "^6.3.3"
+    "astro": "^6.3.3",
+    "codemirror": "^6.0.2",
+    "y-codemirror.next": "^0.3.5",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "@types/node": "^25.8.0",

@@ -128,6 +128,9 @@ function seedState() {
         version: "1.0",
         summary: "改定案の概要",
         file_url: null,
+        markdown_body: "# 管理規約改定案\n\n- 現行条文\n- 改定案の概要",
+        current_version_id: "version-1",
+        crdt_snapshot_id: null,
         status: "board_review",
         created_by: "admin-user",
         updated_by: "admin-user",
@@ -136,6 +139,18 @@ function seedState() {
         updated_at: iso("2026-05-10T00:00:00Z"),
       },
     ],
+    document_versions: [
+      {
+        id: "version-1",
+        document_id: "doc-1",
+        version_label: "v1",
+        markdown_body: "# 管理規約改定案\n\n- 現行条文\n- 改定案の概要",
+        summary: "初期版",
+        created_by: "admin-user",
+        created_at: iso("2026-05-10T00:00:00Z"),
+      },
+    ],
+    document_crdt_snapshots: [],
     document_approvals: [],
     document_seals: [],
     maintenance_requests: [
@@ -539,6 +554,11 @@ function enrichRow(state, table, row) {
     next.management_documents = doc ? { title: doc.title, version: doc.version } : null;
     const profile = state.profiles.find((item) => item.id === row.actor_id || item.id === row.sealed_by);
     next.profiles = profile ? { display_name: profile.display_name } : null;
+  } else if (table === "document_versions" || table === "document_crdt_snapshots") {
+    const doc = state.management_documents.find((document) => document.id === row.document_id);
+    next.management_documents = doc ? { title: doc.title, version: doc.version } : null;
+    const profile = state.profiles.find((item) => item.id === row.created_by);
+    next.profiles = profile ? { display_name: profile.display_name } : null;
   } else if (table === "maintenance_requests" || table === "finance_entries" || table === "rooms" || table === "assets") {
     const profile = state.profiles.find((item) => item.id === row.created_by || item.id === row.requester_id);
     if (profile) next.profiles = { display_name: profile.display_name };
@@ -611,6 +631,7 @@ function applyInsert(state, table, payload) {
     if (table === "surveys" && row.is_open === undefined) row.is_open = true;
     if (table === "meeting_sessions" && row.status === undefined) row.status = "open";
     if (table === "inspection_plans" && row.is_active === undefined) row.is_active = true;
+    if (table === "management_documents" && row.markdown_body === undefined) row.markdown_body = `# ${row.title}\n\n${row.summary}`;
     const now = iso(new Date());
     if (table === "document_seals" && !row.sealed_at) row.sealed_at = now;
     if (!row.created_at) row.created_at = now;
@@ -666,10 +687,59 @@ function authResponse(state, email) {
 
 export function createMockSupabaseBackend() {
   const state = seedState();
+  const realtimeEvents = [];
 
   return {
     state,
+    realtimeEvents,
     async install(page) {
+      await page.exposeFunction("__mejiroRecordRealtime", (event) => {
+        realtimeEvents.push(event);
+      });
+      await page.addInitScript(() => {
+        const channels = new Map();
+        window.__MEJIRO_MOCK_REALTIME__ = {
+          channel(topic) {
+            if (!channels.has(topic)) {
+              const handlers = [];
+              channels.set(topic, {
+                on(type, filter, callback) {
+                  handlers.push({ type, event: filter?.event, callback });
+                  return this;
+                },
+                subscribe(callback) {
+                  setTimeout(() => callback?.("SUBSCRIBED"), 0);
+                  return this;
+                },
+                async send(message) {
+                  const event = { topic, event: message.event, payload: message.payload };
+                  window.__MEJIRO_REALTIME_EVENTS__ = window.__MEJIRO_REALTIME_EVENTS__ || [];
+                  window.__MEJIRO_REALTIME_EVENTS__.push(event);
+                  window.__mejiroRecordRealtime?.(event);
+                  for (const handler of handlers) {
+                    if (handler.type === message.type && handler.event === message.event) {
+                      handler.callback({ event: message.event, payload: message.payload });
+                    }
+                  }
+                  return "ok";
+                },
+                async track(payload) {
+                  const event = { topic, event: "presence-track", payload };
+                  window.__MEJIRO_REALTIME_EVENTS__ = window.__MEJIRO_REALTIME_EVENTS__ || [];
+                  window.__MEJIRO_REALTIME_EVENTS__.push(event);
+                  window.__mejiroRecordRealtime?.(event);
+                  return "ok";
+                },
+                async untrack() {
+                  return "ok";
+                },
+              });
+            }
+            return channels.get(topic);
+          },
+        };
+      });
+
       await page.route("**/auth/v1/token**", async (route) => {
         const request = route.request();
         const payload = request.postDataJSON?.() ?? {};

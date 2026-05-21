@@ -1,4 +1,12 @@
 import { animate, stagger } from "animejs";
+import { markdown } from "@codemirror/lang-markdown";
+import { EditorState } from "@codemirror/state";
+import { EditorView, placeholder } from "@codemirror/view";
+import { basicSetup } from "codemirror";
+import * as Y from "yjs";
+import { Awareness } from "y-protocols/awareness";
+import { encodeAwarenessUpdate, applyAwarenessUpdate } from "y-protocols/awareness";
+import { yCollab } from "y-codemirror.next";
 import { hasSupabaseConfig, supabase, type BookingStatus, type Profile, type Role } from "../lib/supabase";
 
 type Room = {
@@ -61,6 +69,9 @@ type ManagementDocument = {
   version: string;
   summary: string;
   file_url: string | null;
+  markdown_body: string;
+  current_version_id: string | null;
+  crdt_snapshot_id: string | null;
   status: DocumentStatus;
   created_by: string;
   updated_by: string | null;
@@ -68,6 +79,26 @@ type ManagementDocument = {
   created_at: string;
   updated_at: string;
   profiles?: Pick<Profile, "display_name"> | null;
+};
+
+type DocumentVersion = {
+  id: string;
+  document_id: string;
+  version_label: string;
+  markdown_body: string;
+  summary: string | null;
+  created_by: string;
+  created_at: string;
+  profiles?: Pick<Profile, "display_name"> | null;
+};
+
+type DocumentCrdtSnapshot = {
+  id: string;
+  document_id: string;
+  yjs_update: string | number[];
+  markdown_body: string;
+  created_by: string;
+  created_at: string;
 };
 
 type DocumentApproval = {
@@ -465,6 +496,10 @@ let bookingsCache: Booking[] = [];
 let activeBookingId: string | null = null;
 let bookingHoverCard: HTMLDivElement | null = null;
 let documentFilter: DocumentStatus | "all" = "all";
+let activeDocumentId: string | null = null;
+let activeDocument: ManagementDocument | null = null;
+let activeDocumentVersions: DocumentVersion[] = [];
+let documentCollab: DocumentCollabSession | null = null;
 let maintenanceFilter: MaintenanceStatus | "all" = "all";
 let financeFilter: FinanceEntryType | "all" = "all";
 let assetFilter: AssetStatus | "all" = "all";
@@ -478,6 +513,34 @@ let meetingSessionsCache: MeetingSession[] = [];
 let meetingAgendaCache: MeetingAgendaItem[] = [];
 let inspectionPlansCache: InspectionPlan[] = [];
 let inspectionAssetsCache: AssetItem[] = [];
+
+type DocumentRealtimeChannel = {
+  on: (type: string, filter: { event?: string }, callback: (payload: { event?: string; payload: unknown }) => void) => DocumentRealtimeChannel;
+  subscribe: (callback?: (status: string) => void) => DocumentRealtimeChannel;
+  send: (message: { type: string; event: string; payload: unknown }) => Promise<unknown>;
+  track?: (payload: unknown) => Promise<unknown>;
+  untrack?: () => Promise<unknown>;
+};
+
+type DocumentCollabSession = {
+  documentId: string;
+  ydoc: Y.Doc;
+  ytext: Y.Text;
+  awareness: Awareness;
+  editor: EditorView;
+  channel: DocumentRealtimeChannel | null;
+  destroy: () => void;
+};
+
+type MockRealtime = {
+  channel: (topic: string) => DocumentRealtimeChannel;
+};
+
+declare global {
+  interface Window {
+    __MEJIRO_MOCK_REALTIME__?: MockRealtime;
+  }
+}
 
 const roleLabels: Record<Role, string> = {
   resident: "居民",
@@ -1673,6 +1736,11 @@ async function initDocuments() {
   qs("[data-document-form]")?.classList.toggle("hidden", !canManageDocuments());
   await renderDocumentsPage();
 
+  qs<HTMLButtonElement>("[data-document-close]")?.addEventListener("click", () => closeDocumentWorkspace());
+  qs<HTMLButtonElement>("[data-document-save-version]")?.addEventListener("click", () => saveActiveDocumentVersion());
+  qs<HTMLButtonElement>("[data-document-show-diff]")?.addEventListener("click", () => renderActiveDocumentDiff());
+  qs<HTMLButtonElement>("[data-document-print]")?.addEventListener("click", () => renderActiveDocumentPrintView());
+
   qsa<HTMLButtonElement>("[data-document-filter]").forEach((button) => {
     button.addEventListener("click", async () => {
       documentFilter = (button.dataset.documentFilter as DocumentStatus | "all") ?? "all";
@@ -1694,6 +1762,7 @@ async function initDocuments() {
       version: String(form.get("version") || "1.0"),
       summary: String(form.get("summary")),
       file_url: String(form.get("file_url") || "") || null,
+      markdown_body: `# ${String(form.get("title"))}\n\n${String(form.get("summary"))}`,
       status: "board_review",
       created_by: currentProfile!.id,
       updated_by: currentProfile!.id,
@@ -1792,6 +1861,7 @@ function renderDocumentList(documents: ManagementDocument[]) {
           ${
             canManageDocuments()
               ? `<div class="toolbar">
+                  <button class="button secondary" type="button" data-document-open="${document.id}">Markdown編集</button>
                   ${
                     stage
                       ? `${canActOnStage ? `<button class="button" type="button" data-document-approve="${document.id}">${documentStageLabels[stage]}承認</button>` : `<span class="badge warning">${documentStageLabels[stage]}承認待ち</span>`}
@@ -1816,6 +1886,9 @@ function renderDocumentList(documents: ManagementDocument[]) {
   qsa<HTMLButtonElement>("[data-document-approve]").forEach((button) => {
     button.addEventListener("click", () => approveDocumentStage(button.dataset.documentApprove!));
   });
+  qsa<HTMLButtonElement>("[data-document-open]").forEach((button) => {
+    button.addEventListener("click", () => openDocumentWorkspace(button.dataset.documentOpen!));
+  });
   qsa<HTMLButtonElement>("[data-document-reject]").forEach((button) => {
     button.addEventListener("click", () => rejectDocument(button.dataset.documentReject!));
   });
@@ -1825,6 +1898,375 @@ function renderDocumentList(documents: ManagementDocument[]) {
   qsa<HTMLButtonElement>("[data-document-archive]").forEach((button) => {
     button.addEventListener("click", () => updateDocumentStatus(button.dataset.documentArchive!, "archived"));
   });
+}
+
+async function openDocumentWorkspace(id: string) {
+  const document = await loadDocumentForAction(id);
+  if (!document) return;
+  activeDocumentId = id;
+  activeDocument = document;
+  qs("[data-document-workspace]")?.classList.remove("hidden");
+  qs("[data-document-print-view]")?.classList.add("hidden");
+  qs("[data-document-diff-panel]")?.classList.add("hidden");
+  setText("[data-document-editor-title]", document.title);
+  setText("[data-document-editor-meta]", `${documentKindLabels[document.kind]} / v${document.version} / ${documentStatusLabels[document.status]}`);
+  setStatus("[data-document-editor-status]", "協作セッションを準備しています。");
+  await loadDocumentVersions(id);
+  await startDocumentCollabSession(document);
+}
+
+function closeDocumentWorkspace() {
+  documentCollab?.destroy();
+  documentCollab = null;
+  activeDocumentId = null;
+  activeDocument = null;
+  activeDocumentVersions = [];
+  qs("[data-document-workspace]")?.classList.add("hidden");
+  qs("[data-document-print-view]")?.classList.add("hidden");
+}
+
+async function loadDocumentVersions(documentId: string) {
+  const { data } = await supabase!
+    .from("document_versions")
+    .select("*, profiles(display_name)")
+    .eq("document_id", documentId)
+    .order("created_at", { ascending: true });
+  activeDocumentVersions = (data ?? []) as DocumentVersion[];
+  if (activeDocument && !activeDocumentVersions.length) {
+    activeDocumentVersions = [{
+      id: "current",
+      document_id: activeDocument.id,
+      version_label: activeDocument.version,
+      markdown_body: documentMarkdown(activeDocument),
+      summary: "現在の文書本文",
+      created_by: activeDocument.created_by,
+      created_at: activeDocument.created_at,
+      profiles: activeDocument.profiles,
+    }];
+  }
+  renderDocumentVersions();
+}
+
+async function startDocumentCollabSession(document: ManagementDocument) {
+  documentCollab?.destroy();
+  const parent = qs<HTMLElement>("[data-document-editor]");
+  if (!parent) return;
+  parent.innerHTML = "";
+
+  const ydoc = new Y.Doc();
+  const ytext = ydoc.getText("markdown");
+  const snapshot = await loadDocumentCrdtSnapshot(document.id);
+  if (snapshot) {
+    try {
+      Y.applyUpdate(ydoc, decodeBytea(snapshot.yjs_update));
+    } catch {
+      ytext.insert(0, snapshot.markdown_body || documentMarkdown(document));
+    }
+  } else {
+    ytext.insert(0, documentMarkdown(document));
+  }
+
+  const awareness = new Awareness(ydoc);
+  const userColor = colorForUser(currentProfile?.id ?? "user");
+  awareness.setLocalStateField("user", {
+    name: currentProfile?.display_name ?? "担当者",
+    color: userColor,
+    colorLight: `${userColor}33`,
+  });
+
+  const channel = createDocumentRealtimeChannel(document.id, ydoc, awareness);
+  const view = new EditorView({
+    state: EditorState.create({
+      doc: ytext.toString(),
+      extensions: [
+        basicSetup,
+        markdown(),
+        EditorView.lineWrapping,
+        placeholder("Markdownで本文を編集します。"),
+        yCollab(ytext, awareness),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) renderMarkdownPreview(ytext.toString());
+        }),
+      ],
+    }),
+    parent,
+  });
+
+  const updatePreview = () => renderMarkdownPreview(ytext.toString());
+  ytext.observe(updatePreview);
+  updatePreview();
+  documentCollab = {
+    documentId: document.id,
+    ydoc,
+    ytext,
+    awareness,
+    editor: view,
+    channel,
+    destroy: () => {
+      ytext.unobserve(updatePreview);
+      channel?.untrack?.();
+      if (channel && supabase) supabase.removeChannel(channel as never);
+      view.destroy();
+      awareness.destroy();
+      ydoc.destroy();
+    },
+  };
+  renderPresence(awareness);
+  setStatus("[data-document-editor-status]", "CRDT協作セッションに接続しました。");
+}
+
+async function loadDocumentCrdtSnapshot(documentId: string) {
+  const { data } = await supabase!
+    .from("document_crdt_snapshots")
+    .select("*")
+    .eq("document_id", documentId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return ((data ?? []) as DocumentCrdtSnapshot[])[0] ?? null;
+}
+
+function createDocumentRealtimeChannel(documentId: string, ydoc: Y.Doc, awareness: Awareness) {
+  const topic = `document-crdt:${documentId}`;
+  const channel = window.__MEJIRO_MOCK_REALTIME__?.channel(topic)
+    ?? supabase!.channel(topic, { config: { broadcast: { self: false }, presence: { key: currentProfile?.id ?? "user" } } }) as unknown as DocumentRealtimeChannel;
+  const remoteOrigin = { remote: true };
+
+  channel
+    .on("broadcast", { event: "y-update" }, ({ payload }) => {
+      const update = (payload as { update?: string })?.update;
+      if (update) Y.applyUpdate(ydoc, base64ToUint8Array(update), remoteOrigin);
+    })
+    .on("broadcast", { event: "awareness" }, ({ payload }) => {
+      const update = (payload as { update?: string })?.update;
+      if (update) applyAwarenessUpdate(awareness, base64ToUint8Array(update), remoteOrigin);
+    })
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        channel.track?.({ user: currentProfile?.display_name ?? "担当者" });
+      }
+    });
+
+  ydoc.on("update", (update: Uint8Array, origin: unknown) => {
+    if (origin === remoteOrigin) return;
+    void channel.send({ type: "broadcast", event: "y-update", payload: { update: uint8ArrayToBase64(update) } });
+  });
+
+  awareness.on("update", ({ added, updated, removed }: { added: number[]; updated: number[]; removed: number[] }, origin: unknown) => {
+    renderPresence(awareness);
+    if (origin === remoteOrigin) return;
+    const clients = added.concat(updated, removed);
+    if (clients.length) {
+      const update = encodeAwarenessUpdate(awareness, clients);
+      void channel.send({ type: "broadcast", event: "awareness", payload: { update: uint8ArrayToBase64(update) } });
+    }
+  });
+
+  const update = encodeAwarenessUpdate(awareness, [ydoc.clientID]);
+  void channel.send({ type: "broadcast", event: "awareness", payload: { update: uint8ArrayToBase64(update) } });
+  return channel;
+}
+
+async function saveActiveDocumentVersion() {
+  if (!activeDocument || !documentCollab) return;
+  const markdown = documentCollab.ytext.toString();
+  const versionLabel = nextDocumentVersionLabel(activeDocumentVersions);
+  const { data: version, error } = await supabase!
+    .from("document_versions")
+    .insert({
+      document_id: activeDocument.id,
+      version_label: versionLabel,
+      markdown_body: markdown,
+      summary: `CRDT協作セッションから保存 (${versionLabel})`,
+      created_by: currentProfile!.id,
+    })
+    .select("*, profiles(display_name)")
+    .single();
+  if (error) {
+    setStatus("[data-document-editor-status]", error.message, true);
+    return;
+  }
+
+  const snapshotUpdate = Y.encodeStateAsUpdate(documentCollab.ydoc);
+  const { data: snapshot } = await supabase!
+    .from("document_crdt_snapshots")
+    .insert({
+      document_id: activeDocument.id,
+      yjs_update: encodeBytea(snapshotUpdate),
+      markdown_body: markdown,
+      created_by: currentProfile!.id,
+    })
+    .select("*")
+    .single();
+
+  const patch: Partial<ManagementDocument> = {
+    markdown_body: markdown,
+    current_version_id: (version as DocumentVersion).id,
+    crdt_snapshot_id: (snapshot as DocumentCrdtSnapshot | null)?.id ?? activeDocument.crdt_snapshot_id,
+    updated_by: currentProfile!.id,
+  };
+  await supabase!.from("management_documents").update(patch).eq("id", activeDocument.id);
+  activeDocument = { ...activeDocument, ...patch } as ManagementDocument;
+  activeDocumentVersions.push(version as DocumentVersion);
+  renderDocumentVersions();
+  renderMarkdownPreview(markdown);
+  setStatus("[data-document-editor-status]", `${versionLabel} を保存しました。`);
+  await renderDocumentsPage();
+}
+
+function renderDocumentVersions() {
+  const container = qs("[data-document-versions]");
+  if (!container) return;
+  if (!activeDocumentVersions.length) {
+    container.innerHTML = `<p class="meta">版履歴はありません。</p>`;
+    return;
+  }
+  container.innerHTML = activeDocumentVersions
+    .slice()
+    .reverse()
+    .map((version) => `
+      <article class="list-item">
+        <div class="list-row">
+          <div>
+            <strong>${escapeHtml(version.version_label)}</strong>
+            <p class="meta">${formatDateTime(version.created_at)} / ${escapeHtml(version.profiles?.display_name ?? "担当者")}</p>
+          </div>
+        </div>
+        ${version.summary ? `<p>${escapeHtml(version.summary)}</p>` : ""}
+      </article>
+    `)
+    .join("");
+}
+
+function renderActiveDocumentDiff() {
+  qs("[data-document-diff-panel]")?.classList.remove("hidden");
+  const container = qs("[data-document-diff]");
+  if (!container) return;
+  if (activeDocumentVersions.length < 2) {
+    container.innerHTML = `<p class="meta">比較できる版がまだありません。</p>`;
+    return;
+  }
+  const before = activeDocumentVersions[activeDocumentVersions.length - 2];
+  const after = activeDocumentVersions[activeDocumentVersions.length - 1];
+  container.innerHTML = renderLineDiff(before.markdown_body, after.markdown_body);
+}
+
+function renderActiveDocumentPrintView() {
+  const container = qs("[data-document-print-view]");
+  if (!container || !activeDocument || !documentCollab) return;
+  container.classList.remove("hidden");
+  container.innerHTML = `
+    <div class="print-head">
+      <p class="eyebrow">PDF / Print</p>
+      <h1>${escapeHtml(activeDocument.title)}</h1>
+      <p class="meta">${documentKindLabels[activeDocument.kind]} / v${escapeHtml(activeDocument.version)} / ${formatDateTime(activeDocument.updated_at)}</p>
+    </div>
+    <article class="markdown-preview">${renderMarkdown(documentCollab.ytext.toString())}</article>
+  `;
+}
+
+function renderMarkdownPreview(markdown: string) {
+  const preview = qs("[data-document-preview]");
+  if (preview) preview.innerHTML = renderMarkdown(markdown);
+}
+
+function renderMarkdown(markdown: string) {
+  const lines = markdown.split(/\r?\n/);
+  const html: string[] = [];
+  let inList = false;
+  for (const line of lines) {
+    if (/^###\s+/.test(line)) {
+      if (inList) html.push("</ul>");
+      inList = false;
+      html.push(`<h3>${escapeHtml(line.replace(/^###\s+/, ""))}</h3>`);
+    } else if (/^##\s+/.test(line)) {
+      if (inList) html.push("</ul>");
+      inList = false;
+      html.push(`<h2>${escapeHtml(line.replace(/^##\s+/, ""))}</h2>`);
+    } else if (/^#\s+/.test(line)) {
+      if (inList) html.push("</ul>");
+      inList = false;
+      html.push(`<h1>${escapeHtml(line.replace(/^#\s+/, ""))}</h1>`);
+    } else if (/^[-*]\s+/.test(line)) {
+      if (!inList) html.push("<ul>");
+      inList = true;
+      html.push(`<li>${escapeHtml(line.replace(/^[-*]\s+/, ""))}</li>`);
+    } else if (line.trim()) {
+      if (inList) html.push("</ul>");
+      inList = false;
+      html.push(`<p>${escapeHtml(line)}</p>`);
+    } else if (inList) {
+      html.push("</ul>");
+      inList = false;
+    }
+  }
+  if (inList) html.push("</ul>");
+  return html.join("");
+}
+
+function renderLineDiff(beforeMarkdown: string, afterMarkdown: string) {
+  const before = beforeMarkdown.split(/\r?\n/);
+  const after = afterMarkdown.split(/\r?\n/);
+  const rows: string[] = [];
+  const max = Math.max(before.length, after.length);
+  for (let index = 0; index < max; index += 1) {
+    const left = before[index] ?? "";
+    const right = after[index] ?? "";
+    if (left === right) {
+      rows.push(`<div class="diff-line same"> ${escapeHtml(right)}</div>`);
+    } else {
+      if (left) rows.push(`<div class="diff-line removed">- ${escapeHtml(left)}</div>`);
+      if (right) rows.push(`<div class="diff-line added">+ ${escapeHtml(right)}</div>`);
+    }
+  }
+  return rows.join("");
+}
+
+function renderPresence(awareness: Awareness) {
+  const container = qs("[data-document-presence]");
+  if (!container) return;
+  const states = Array.from(awareness.getStates().values()) as Array<{ user?: { name?: string; color?: string } }>;
+  container.innerHTML = states
+    .map((state) => {
+      const user = state.user;
+      if (!user) return "";
+      return `<span class="presence-pill" style="--presence-color:${escapeHtml(user.color ?? "#176b5b")}">${escapeHtml(user.name ?? "担当者")}</span>`;
+    })
+    .join("");
+}
+
+function nextDocumentVersionLabel(versions: DocumentVersion[]) {
+  return `v${versions.length + 1}`;
+}
+
+function documentMarkdown(document: ManagementDocument) {
+  return document.markdown_body || `# ${document.title}\n\n${document.summary}`;
+}
+
+function colorForUser(id: string) {
+  const colors = ["#176b5b", "#b75d29", "#285f8f", "#7a4f9a", "#9a3f52", "#4d7c2f"];
+  const total = Array.from(id).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return colors[total % colors.length];
+}
+
+function uint8ArrayToBase64(update: Uint8Array) {
+  let binary = "";
+  update.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary);
+}
+
+function base64ToUint8Array(value: string) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+function encodeBytea(update: Uint8Array) {
+  return `\\x${Array.from(update).map((byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function decodeBytea(value: string | number[]) {
+  if (Array.isArray(value)) return Uint8Array.from(value);
+  const hex = value.startsWith("\\x") ? value.slice(2) : value;
+  const bytes = hex.match(/.{1,2}/g)?.map((byte) => Number.parseInt(byte, 16)) ?? [];
+  return Uint8Array.from(bytes);
 }
 
 async function updateDocumentStatus(id: string, status: DocumentStatus) {

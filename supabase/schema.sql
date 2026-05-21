@@ -121,6 +121,9 @@ create table public.management_documents (
   version text not null default '1.0',
   summary text not null,
   file_url text,
+  markdown_body text not null default '',
+  current_version_id uuid,
+  crdt_snapshot_id uuid,
   status public.document_status not null default 'board_review',
   created_by uuid not null references public.profiles(id) on delete cascade,
   updated_by uuid references public.profiles(id),
@@ -128,6 +131,39 @@ create table public.management_documents (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table public.document_versions (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.management_documents(id) on delete cascade,
+  version_label text not null,
+  markdown_body text not null,
+  summary text,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create table public.document_crdt_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references public.management_documents(id) on delete cascade,
+  yjs_update bytea not null,
+  markdown_body text not null default '',
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.management_documents
+add constraint management_documents_current_version_fk
+foreign key (current_version_id) references public.document_versions(id) on delete set null;
+
+alter table public.management_documents
+add constraint management_documents_crdt_snapshot_fk
+foreign key (crdt_snapshot_id) references public.document_crdt_snapshots(id) on delete set null;
+
+create index document_versions_document_created_idx
+on public.document_versions (document_id, created_at desc);
+
+create index document_crdt_snapshots_document_created_idx
+on public.document_crdt_snapshots (document_id, created_at desc);
 
 create table public.document_approvals (
   id uuid primary key default gen_random_uuid(),
@@ -721,6 +757,8 @@ alter table public.notices enable row level security;
 alter table public.notice_reads enable row level security;
 alter table public.events enable row level security;
 alter table public.management_documents enable row level security;
+alter table public.document_versions enable row level security;
+alter table public.document_crdt_snapshots enable row level security;
 alter table public.document_approvals enable row level security;
 alter table public.document_seals enable row level security;
 alter table public.maintenance_requests enable row level security;
@@ -868,6 +906,26 @@ on public.management_documents for update
 to authenticated
 using (app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]))
 with check (app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
+
+create policy "document_versions_select_authenticated"
+on public.document_versions for select
+to authenticated
+using (true);
+
+create policy "documents_versions_manager_insert"
+on public.document_versions for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
+
+create policy "document_crdt_snapshots_select_authenticated"
+on public.document_crdt_snapshots for select
+to authenticated
+using (true);
+
+create policy "document_crdt_snapshots_manager_insert"
+on public.document_crdt_snapshots for insert
+to authenticated
+with check (created_by = auth.uid() and app_private.has_role(array['board_member', 'chair', 'president', 'admin']::public.app_role[]));
 
 create policy "document_approvals_select_authenticated"
 on public.document_approvals for select
@@ -1419,6 +1477,8 @@ grant select, insert, update on public.notices to authenticated;
 grant select, insert, update on public.notice_reads to authenticated;
 grant select, insert, update, delete on public.events to authenticated;
 grant select, insert, update on public.management_documents to authenticated;
+grant select, insert on public.document_versions to authenticated;
+grant select, insert on public.document_crdt_snapshots to authenticated;
 grant select, insert on public.document_approvals to authenticated;
 grant select, insert on public.document_seals to authenticated;
 grant select, insert, update on public.maintenance_requests to authenticated;

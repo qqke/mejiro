@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { Check, FileCheck2, FileText, Plus, Stamp, X } from "@lucide/astro";
+import { Check, FileCheck2, FileText, GitCompare, Plus, Printer, Save, Stamp, Users, X } from "@lucide/astro";
 ---
 
 <AppLayout title="管理文書" page="documents">
@@ -83,6 +83,52 @@ import { Check, FileCheck2, FileText, Plus, Stamp, X } from "@lucide/astro";
       <div class="list compact-list" data-document-seals></div>
     </div>
   </section>
+
+  <section class="panel document-workspace hidden" data-document-workspace aria-label="Markdown 協作編集">
+    <div class="workspace-head">
+      <div>
+        <p class="eyebrow">Collaborative Markdown</p>
+        <h2 data-document-editor-title>文書を選択してください</h2>
+        <p class="lead" data-document-editor-meta>版履歴、Markdown、PDF 出力をここで管理します。</p>
+      </div>
+      <div class="toolbar">
+        <button class="button secondary" type="button" data-document-close>閉じる</button>
+        <button class="button secondary" type="button" data-document-print><Printer size={16} aria-hidden="true" />PDF/印刷</button>
+        <button class="button secondary" type="button" data-document-show-diff><GitCompare size={16} aria-hidden="true" />差分</button>
+        <button class="button" type="button" data-document-save-version><Save size={16} aria-hidden="true" />版を保存</button>
+      </div>
+    </div>
+
+    <div class="collab-strip">
+      <span><Users size={16} aria-hidden="true" />編集中</span>
+      <div class="presence-list" data-document-presence></div>
+      <p class="status" data-document-editor-status></p>
+    </div>
+
+    <div class="document-editor-grid">
+      <div>
+        <h3>Markdown</h3>
+        <div class="document-editor" data-document-editor></div>
+      </div>
+      <div>
+        <h3>Preview</h3>
+        <article class="markdown-preview" data-document-preview></article>
+      </div>
+    </div>
+
+    <div class="document-version-grid">
+      <div>
+        <h3>版履歴</h3>
+        <div class="list compact-list" data-document-versions></div>
+      </div>
+      <div class="document-diff-panel hidden" data-document-diff-panel>
+        <h3>差分</h3>
+        <div class="document-diff" data-document-diff></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel document-print-view hidden" data-document-print-view aria-label="PDF 印刷ビュー"></section>
 
   <template data-document-actions-template>
     <div class="toolbar">

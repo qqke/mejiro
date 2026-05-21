@@ -14,6 +14,7 @@ const scripts = [
   ["tests/browser/empty-states-smoke.mjs", "empty-states"],
   ["tests/browser/meetings-smoke.mjs", "meetings"],
   ["tests/browser/inspections-smoke.mjs", "inspections"],
+  ["tests/browser/documents-crdt-smoke.mjs", "documents-crdt"],
   ["tests/browser/functionality-smoke.mjs", "functionality"],
 ];
 
