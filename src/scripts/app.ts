@@ -2175,33 +2175,57 @@ function renderMarkdown(markdown: string) {
   const lines = markdown.split(/\r?\n/);
   const html: string[] = [];
   let inList = false;
+  let inCodeBlock = false;
+  let codeLanguage = "";
+  let codeLines: string[] = [];
+
+  const closeList = () => {
+    if (inList) html.push("</ul>");
+    inList = false;
+  };
+  const closeCodeBlock = () => {
+    const languageClass = codeLanguage ? ` class="language-${escapeHtml(codeLanguage)}"` : "";
+    html.push(`<pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    inCodeBlock = false;
+    codeLanguage = "";
+    codeLines = [];
+  };
+
   for (const line of lines) {
-    if (/^###\s+/.test(line)) {
-      if (inList) html.push("</ul>");
-      inList = false;
+    const fence = line.match(/^```\s*([A-Za-z0-9_-]+)?\s*$/);
+    if (fence) {
+      if (inCodeBlock) {
+        closeCodeBlock();
+      } else {
+        closeList();
+        inCodeBlock = true;
+        codeLanguage = fence[1] ?? "";
+        codeLines = [];
+      }
+    } else if (inCodeBlock) {
+      codeLines.push(line);
+    } else if (/^###\s+/.test(line)) {
+      closeList();
       html.push(`<h3>${escapeHtml(line.replace(/^###\s+/, ""))}</h3>`);
     } else if (/^##\s+/.test(line)) {
-      if (inList) html.push("</ul>");
-      inList = false;
+      closeList();
       html.push(`<h2>${escapeHtml(line.replace(/^##\s+/, ""))}</h2>`);
     } else if (/^#\s+/.test(line)) {
-      if (inList) html.push("</ul>");
-      inList = false;
+      closeList();
       html.push(`<h1>${escapeHtml(line.replace(/^#\s+/, ""))}</h1>`);
     } else if (/^[-*]\s+/.test(line)) {
       if (!inList) html.push("<ul>");
       inList = true;
       html.push(`<li>${escapeHtml(line.replace(/^[-*]\s+/, ""))}</li>`);
     } else if (line.trim()) {
-      if (inList) html.push("</ul>");
-      inList = false;
+      closeList();
       html.push(`<p>${escapeHtml(line)}</p>`);
     } else if (inList) {
-      html.push("</ul>");
-      inList = false;
+      closeList();
     }
   }
-  if (inList) html.push("</ul>");
+  if (inCodeBlock) closeCodeBlock();
+  closeList();
   return html.join("");
 }
 

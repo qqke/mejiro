@@ -33,7 +33,10 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await page.locator("[data-document-editor]").waitFor({ state: "visible", timeout: 20000 });
   await page.locator("[data-document-editor] .cm-content").click();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
-  await page.keyboard.type("# 管理規約改定案\n\n- 第一条を更新\n- 第二条を追加");
+  await page.keyboard.insertText("# 管理規約改定案\n\n- 第一条を更新\n- 第二条を追加\n\n```js\nconst rule = \"parking\";\nconsole.log(rule);\n```");
+  await page.locator("[data-document-preview] pre code").waitFor({ state: "visible", timeout: 20000 });
+  const previewCode = await page.locator("[data-document-preview] pre code").textContent();
+  assert(previewCode.includes("console.log(rule);"), "preview should render fenced markdown code blocks");
   await page.locator("[data-document-save-version]").click();
 
   await waitForCondition(
@@ -43,7 +46,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   await page.locator("[data-document-editor] .cm-content").click();
   await page.keyboard.press("End");
-  await page.keyboard.type("\n- 第三条を追加");
+  await page.keyboard.insertText("\n- 第三条を追加");
   await page.locator("[data-document-save-version]").click();
 
   await waitForCondition(
@@ -61,6 +64,8 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   const printText = await page.locator("[data-document-print-view]").textContent();
   assert(printText.includes("管理規約改定案"), "print view should include document title");
   assert(printText.includes("第三条を追加"), "print view should include latest markdown");
+  const printCode = await page.locator("[data-document-print-view] pre code").textContent();
+  assert(printCode.includes("console.log(rule);"), "print view should render fenced markdown code blocks");
   await waitForCondition(
     () => page.evaluate(() => window.__MEJIRO_PRINT_CALLED__ === true),
     "browser print call",
