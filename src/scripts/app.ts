@@ -827,6 +827,142 @@ function setStatus(selector: string, message: string, error = false) {
   if (!element) return;
   element.textContent = message;
   element.classList.toggle("error", error);
+  animateStatus(selector, error);
+}
+
+function shouldReduceMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function animatePageEntry() {
+  if (shouldReduceMotion()) return;
+  animate(".panel, .card, .page-head, .login-visual > *, .login-form-wrap", {
+    opacity: [0, 1],
+    translateY: [10, 0],
+    delay: stagger(45),
+    duration: 420,
+    ease: "out(3)",
+  });
+}
+
+function animateList(container: Element | null) {
+  if (!container || shouldReduceMotion()) return;
+  const items = Array.from(container.querySelectorAll(".list-item"));
+  if (items.length) {
+    animate(items, {
+      opacity: [0, 1],
+      translateY: [6, 0],
+      delay: stagger(24),
+      duration: 220,
+      ease: "out(3)",
+    });
+    return;
+  }
+  const emptyState = container.querySelector(".meta");
+  if (emptyState) {
+    animate(emptyState, {
+      opacity: [0, 1],
+      duration: 180,
+      ease: "out(2)",
+    });
+  }
+}
+
+function animateStatus(selector: string, error = false) {
+  const element = qs(selector);
+  if (!element || shouldReduceMotion() || !element.textContent.trim()) return;
+  animate(element, {
+    opacity: [0.35, 1],
+    translateX: error ? [-4, 0] : [0, 0],
+    duration: error ? 220 : 180,
+    ease: "out(3)",
+  });
+}
+
+function revealElement(element: Element | null) {
+  if (!element || shouldReduceMotion()) return;
+  animate(element, {
+    opacity: [0, 1],
+    translateY: [8, 0],
+    duration: 240,
+    ease: "out(3)",
+  });
+}
+
+function hideElement(element: Element | null) {
+  if (!element) return;
+  if (shouldReduceMotion()) {
+    element.classList.add("hidden");
+    return;
+  }
+  animate(element, {
+    opacity: [1, 0],
+    translateY: [0, 6],
+    duration: 160,
+    ease: "in(2)",
+  });
+  window.setTimeout(() => {
+    element.classList.add("hidden");
+    element.removeAttribute("style");
+  }, 170);
+}
+
+function openModalWithMotion(element: Element | null) {
+  if (!element) return;
+  element.classList.remove("hidden");
+  if (shouldReduceMotion()) return;
+  const modalPanel = element.querySelector(".modal");
+  animate(element, {
+    opacity: [0, 1],
+    duration: 180,
+    ease: "out(2)",
+  });
+  if (modalPanel) {
+    animate(modalPanel, {
+      opacity: [0, 1],
+      scale: [0.98, 1],
+      translateY: [10, 0],
+      duration: 240,
+      ease: "out(3)",
+    });
+  }
+}
+
+function closeModalWithMotion(element: Element | null) {
+  if (!element) return;
+  if (shouldReduceMotion()) {
+    element.classList.add("hidden");
+    return;
+  }
+  const modalPanel = element.querySelector(".modal");
+  animate(element, {
+    opacity: [1, 0],
+    duration: 160,
+    ease: "in(2)",
+  });
+  if (modalPanel) {
+    animate(modalPanel, {
+      opacity: [1, 0],
+      scale: [1, 0.985],
+      translateY: [0, 8],
+      duration: 160,
+      ease: "in(2)",
+    });
+  }
+  window.setTimeout(() => {
+    element.classList.add("hidden");
+    element.removeAttribute("style");
+    modalPanel?.removeAttribute("style");
+  }, 170);
+}
+
+function initListMotion() {
+  if (shouldReduceMotion()) return;
+  qsa<HTMLElement>(".list").forEach((container) => {
+    const observer = new MutationObserver(() => animateList(container));
+    observer.observe(container, { childList: true });
+    animateList(container);
+  });
 }
 
 function escapeHtml(value: string | null | undefined) {
@@ -893,13 +1029,7 @@ function route(path: string) {
 }
 
 async function init() {
-  animate(".panel, .card, .page-head, .login-visual > *, .login-form-wrap", {
-    opacity: [0, 1],
-    translateY: [10, 0],
-    delay: stagger(45),
-    duration: 420,
-    easing: "out(3)",
-  });
+  animatePageEntry();
 
   const configError = requireClient();
   if (configError) {
@@ -952,6 +1082,7 @@ async function init() {
   if (page === "meetings") await initMeetings();
   if (page === "inspections") await initInspections();
   if (page === "admin") await initAdmin();
+  initListMotion();
 }
 
 function initSidebarMenu() {
@@ -1345,6 +1476,7 @@ function renderBookingDetail(booking: Booking) {
   qs<HTMLButtonElement>("[data-detail-approve]")!.onclick = () => updateBookingStatus(booking.id, "approved");
   qs<HTMLButtonElement>("[data-detail-reject]")!.onclick = () => updateBookingStatus(booking.id, "rejected");
   detail.classList.remove("hidden");
+  revealElement(detail);
 }
 
 function canEditBooking(booking: Booking) {
@@ -1366,11 +1498,11 @@ function openBookingModal(booking: Booking) {
   endInput.value = toDateTimeLocal(new Date(booking.end_at));
   purposeInput.value = booking.purpose;
   setStatus("[data-booking-modal-status]", "");
-  modal.classList.remove("hidden");
+  openModalWithMotion(modal);
 }
 
 function closeBookingModal() {
-  qs("[data-booking-modal]")?.classList.add("hidden");
+  closeModalWithMotion(qs("[data-booking-modal]"));
   setStatus("[data-booking-modal-status]", "");
 }
 
@@ -1496,6 +1628,7 @@ function showBookingHoverCard(booking: Booking, target: HTMLElement) {
   card.style.top = `${Math.max(window.scrollY + 8, top)}px`;
   card.style.left = `${Math.max(window.scrollX + 8, left)}px`;
   bookingHoverCard = card;
+  revealElement(card);
 }
 
 function hideBookingHoverCard() {
@@ -1906,7 +2039,9 @@ async function openDocumentWorkspace(id: string) {
   if (!document) return;
   activeDocumentId = id;
   activeDocument = document;
-  qs("[data-document-workspace]")?.classList.remove("hidden");
+  const workspace = qs("[data-document-workspace]");
+  workspace?.classList.remove("hidden");
+  revealElement(workspace);
   qs("[data-document-print-view]")?.classList.add("hidden");
   qs("[data-document-diff-panel]")?.classList.add("hidden");
   setText("[data-document-editor-title]", document.title);
@@ -1922,7 +2057,7 @@ function closeDocumentWorkspace() {
   activeDocumentId = null;
   activeDocument = null;
   activeDocumentVersions = [];
-  qs("[data-document-workspace]")?.classList.add("hidden");
+  hideElement(qs("[data-document-workspace]"));
   qs("[data-document-print-view]")?.classList.add("hidden");
 }
 
@@ -2119,6 +2254,7 @@ function renderDocumentVersions() {
   if (!container) return;
   if (!activeDocumentVersions.length) {
     container.innerHTML = `<p class="meta">版履歴はありません。</p>`;
+    animateList(container);
     return;
   }
   container.innerHTML = activeDocumentVersions
@@ -2136,10 +2272,13 @@ function renderDocumentVersions() {
       </article>
     `)
     .join("");
+  animateList(container);
 }
 
 function renderActiveDocumentDiff() {
-  qs("[data-document-diff-panel]")?.classList.remove("hidden");
+  const panel = qs("[data-document-diff-panel]");
+  panel?.classList.remove("hidden");
+  revealElement(panel);
   const container = qs("[data-document-diff]");
   if (!container) return;
   if (activeDocumentVersions.length < 2) {
@@ -2258,6 +2397,15 @@ function renderPresence(awareness: Awareness) {
       return `<span class="presence-pill" style="--presence-color:${escapeHtml(user.color ?? "#176b5b")}">${escapeHtml(user.name ?? "担当者")}</span>`;
     })
     .join("");
+  if (!shouldReduceMotion()) {
+    animate(container.querySelectorAll(".presence-pill"), {
+      opacity: [0, 1],
+      translateY: [4, 0],
+      delay: stagger(20),
+      duration: 180,
+      ease: "out(2)",
+    });
+  }
 }
 
 function nextDocumentVersionLabel(versions: DocumentVersion[]) {
