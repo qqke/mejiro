@@ -6,6 +6,11 @@ function rowByText(page, selector, text) {
 }
 
 async function firstOptionValue(page, selector) {
+  await waitForCondition(async () => {
+    return await page.locator(selector).evaluate((select) => {
+      return Boolean(select.querySelector("option[value]:not([value=''])"));
+    });
+  }, `${selector} first option`);
   return await page.locator(selector).evaluate((select) => {
     const option = select.querySelector("option[value]:not([value=''])");
     return option?.value ?? "";
