@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { HandCoins, Plus } from "@lucide/astro";
+import { HandCoins, Plus, Search } from "@lucide/astro";
 ---
 
 <AppLayout title="収支台帳" page="finance">
@@ -72,6 +72,10 @@ import { HandCoins, Plus } from "@lucide/astro";
         <button class="segment" type="button" data-finance-filter="income">収入</button>
         <button class="segment" type="button" data-finance-filter="expense">支出</button>
       </div>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 台帳を検索</span>
+        <input class="input" type="search" placeholder="摘要・分類・担当・備考" data-finance-search />
+      </label>
       <div class="list" data-finance-list></div>
     </div>
   </section>

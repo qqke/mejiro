@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { FileSignature, Plus, Store } from "@lucide/astro";
+import { FileSignature, Plus, Search, Store } from "@lucide/astro";
 ---
 
 <AppLayout title="業者契約" page="vendors">
@@ -64,6 +64,10 @@ import { FileSignature, Plus, Store } from "@lucide/astro";
 
     <div class="panel">
       <h2><Store size={18} aria-hidden="true" /> 業者一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 業者を検索</span>
+        <input class="input" type="search" placeholder="業者名・分類・担当・連絡先" data-vendor-search />
+      </label>
       <div class="list" data-vendor-list></div>
     </div>
   </section>
@@ -99,6 +103,10 @@ import { FileSignature, Plus, Store } from "@lucide/astro";
 
     <div class="panel">
       <h2><FileSignature size={18} aria-hidden="true" /> 契約一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 契約を検索</span>
+        <input class="input" type="search" placeholder="契約名・業者・状態" data-contract-search />
+      </label>
       <div class="list" data-contract-list></div>
     </div>
   </section>

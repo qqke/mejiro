@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { CalendarDays, Plus, Recycle } from "@lucide/astro";
+import { CalendarDays, Plus, Recycle, Search } from "@lucide/astro";
 ---
 
 <AppLayout title="ごみ資源" page="waste">
@@ -91,10 +91,18 @@ import { CalendarDays, Plus, Recycle } from "@lucide/astro";
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <h2><CalendarDays size={18} aria-hidden="true" /> 収集ルール</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 収集ルールを検索</span>
+        <input class="input" type="search" placeholder="件名・区分・場所・出し方" data-waste-schedule-search />
+      </label>
       <div class="list" data-waste-schedule-list></div>
     </div>
     <div class="panel">
       <h2><Recycle size={18} aria-hidden="true" /> 粗大ごみ申請一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 申請を検索</span>
+        <input class="input" type="search" placeholder="品目・搬出場所・状態" data-bulky-request-search />
+      </label>
       <div class="list" data-bulky-request-list></div>
     </div>
   </section>

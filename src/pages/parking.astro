@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { Bike, Car, CircleParking, Plus } from "@lucide/astro";
+import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
 ---
 
 <AppLayout title="駐車駐輪" page="parking">
@@ -86,10 +86,18 @@ import { Bike, Car, CircleParking, Plus } from "@lucide/astro";
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <h2><Car size={18} aria-hidden="true" /> 区画一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 区画を検索</span>
+        <input class="input" type="search" placeholder="区画番号・場所" data-parking-space-search />
+      </label>
       <div class="list" data-parking-space-list></div>
     </div>
     <div class="panel">
       <h2><Bike size={18} aria-hidden="true" /> 利用申請一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 申請を検索</span>
+        <input class="input" type="search" placeholder="車両情報・区画番号" data-parking-permit-search />
+      </label>
       <div class="list" data-parking-permit-list></div>
     </div>
   </section>

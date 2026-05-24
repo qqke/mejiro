@@ -17,6 +17,11 @@ const v18v19 = await read("supabase/v18_v19_migration.sql");
 const v20v21 = await read("supabase/v20_v21_migration.sql");
 const v22v23 = await read("supabase/v22_v23_migration.sql");
 const v24v25 = await read("supabase/v24_v25_migration.sql");
+const v26v27 = await read("supabase/v26_v27_migration.sql");
+const v27v28 = await read("supabase/v27_v28_migration.sql");
+const v28v29 = await read("supabase/v28_v29_migration.sql");
+const v29v30 = await read("supabase/v29_v30_migration.sql");
+const v30v31 = await read("supabase/v30_v31_migration.sql");
 
 function getPublicTables(sql) {
   const tables = [];
@@ -46,6 +51,7 @@ for (const bit of [
   "meeting_votes",
   "inspection_plans",
   "inspection_records",
+  "activity_logs",
   "meeting_kind",
   "meeting_status",
   "attendance_status",
@@ -56,6 +62,65 @@ for (const bit of [
   "grant select, insert, update, delete",
 ]) {
   assert(schema.includes(bit), `schema.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "activity_logs",
+  "entity_type",
+  "entity_id",
+  "activity_logs_manager_select",
+  "activity_logs_authenticated_insert",
+  "activity_logs_created_at_idx",
+  "grant select, insert on public.activity_logs to authenticated;",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v26v27.includes(bit), `v26_v27_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "notice_target_role",
+  "'chair'",
+  "'president'",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "alter type public.notice_target_role add value if not exists 'chair';",
+  "alter type public.notice_target_role add value if not exists 'president';",
+]) {
+  assert(v27v28.includes(bit), `v27_v28_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "survey_responses_insert_own",
+  "survey_responses_update_own",
+  "surveys.is_open = true",
+  "safety_checkins_insert_own",
+  "safety_checkins_update_own",
+  "safety_events.status = 'active'",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v28v29.includes(bit), `v28_v29_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "parking_permits_insert_own",
+  "parking_spaces.is_active = true",
+  "parking_spaces.is_available = true",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v29v30.includes(bit), `v29_v30_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "revoke execute on function public.update_own_pending_booking(uuid, uuid, timestamptz, timestamptz, text) from public;",
+  "revoke execute on function public.cancel_own_pending_booking(uuid) from public;",
+  "grant execute on function public.update_own_pending_booking(uuid, uuid, timestamptz, timestamptz, text) to authenticated;",
+  "grant execute on function public.cancel_own_pending_booking(uuid) to authenticated;",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v30v31.includes(bit), `v30_v31_migration.sql should include ${bit}`);
 }
 
 for (const bit of [
@@ -136,4 +201,10 @@ for (const table of getPublicTables(v24v25)) {
   assert(hasRls(v24v25, table), `v24_v25_migration.sql should enable RLS on public.${table}`);
   assert(hasGrant(v24v25, table), `v24_v25_migration.sql should grant authenticated access to public.${table}`);
   assert(hasPolicy(v24v25, table), `v24_v25_migration.sql should define a policy for public.${table}`);
+}
+
+for (const table of getPublicTables(v26v27)) {
+  assert(hasRls(v26v27, table), `v26_v27_migration.sql should enable RLS on public.${table}`);
+  assert(hasGrant(v26v27, table), `v26_v27_migration.sql should grant authenticated access to public.${table}`);
+  assert(hasPolicy(v26v27, table), `v26_v27_migration.sql should define a policy for public.${table}`);
 }

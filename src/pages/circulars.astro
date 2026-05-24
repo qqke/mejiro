@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { CheckCircle2, Newspaper, Plus } from "@lucide/astro";
+import { CheckCircle2, Newspaper, Plus, Search } from "@lucide/astro";
 ---
 
 <AppLayout title="回覧配布" page="circulars">
@@ -51,6 +51,8 @@ import { CheckCircle2, Newspaper, Plus } from "@lucide/astro";
             <option value="all">全員</option>
             <option value="resident">居民</option>
             <option value="board_member">理事</option>
+            <option value="chair">主席</option>
+            <option value="president">理事長</option>
             <option value="admin">管理者</option>
           </select>
         </div>
@@ -69,12 +71,20 @@ import { CheckCircle2, Newspaper, Plus } from "@lucide/astro";
 
     <div class="panel">
       <h2><Newspaper size={18} aria-hidden="true" /> 回覧一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 回覧を検索</span>
+        <input class="input" type="search" placeholder="件名・内容・対象・期限" data-circular-search />
+      </label>
       <div class="list" data-circular-list></div>
     </div>
   </section>
 
   <section class="panel" style="margin-top: 16px;">
     <h2><CheckCircle2 size={18} aria-hidden="true" /> 自分の確認履歴</h2>
+    <label class="field list-search">
+      <span><Search size={14} aria-hidden="true" /> 履歴を検索</span>
+      <input class="input" type="search" placeholder="件名・種別・メモ" data-circular-ack-search />
+    </label>
     <div class="list compact-list" data-circular-ack-list></div>
   </section>
 </AppLayout>

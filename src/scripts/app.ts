@@ -1,12 +1,4 @@
 import { animate, stagger } from "animejs";
-import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
-import { EditorView, placeholder } from "@codemirror/view";
-import { basicSetup } from "codemirror";
-import * as Y from "yjs";
-import { Awareness } from "y-protocols/awareness";
-import { encodeAwarenessUpdate, applyAwarenessUpdate } from "y-protocols/awareness";
-import { yCollab } from "y-codemirror.next";
 import { hasSupabaseConfig, supabase, type BookingStatus, type Profile, type Role } from "../lib/supabase";
 
 type Room = {
@@ -343,7 +335,7 @@ type CircularAcknowledgement = {
   user_id: string;
   note: string | null;
   created_at: string;
-  circulars?: Pick<Circular, "title" | "kind"> | null;
+  circulars?: Pick<Circular, "title" | "kind" | "target_role"> | null;
 };
 
 type LendingItem = {
@@ -486,6 +478,25 @@ type InspectionRecord = {
   asset_items?: Pick<AssetItem, "name"> | null;
 };
 
+type ActivityLog = {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  detail: string | null;
+  created_at: string;
+  profiles?: Pick<Profile, "display_name"> | null;
+};
+
+type HomeWorkItem = {
+  title: string;
+  detail: string;
+  href: string;
+  badge?: string;
+  tone?: "success" | "warning" | "danger";
+};
+
 const page = document.body.dataset.page ?? "home";
 const base = import.meta.env.BASE_URL || "/";
 let currentProfile: Profile | null = null;
@@ -496,23 +507,47 @@ let bookingsCache: Booking[] = [];
 let activeBookingId: string | null = null;
 let bookingHoverCard: HTMLDivElement | null = null;
 let documentFilter: DocumentStatus | "all" = "all";
+let documentSearch = "";
 let activeDocumentId: string | null = null;
 let activeDocument: ManagementDocument | null = null;
 let activeDocumentVersions: DocumentVersion[] = [];
 let documentCollab: DocumentCollabSession | null = null;
+let documentCollabRuntimePromise: Promise<DocumentCollabRuntime> | null = null;
 let maintenanceFilter: MaintenanceStatus | "all" = "all";
+let maintenanceSearch = "";
 let financeFilter: FinanceEntryType | "all" = "all";
+let financeSearch = "";
 let assetFilter: AssetStatus | "all" = "all";
+let assetSearch = "";
 let vendorsCache: Vendor[] = [];
+let vendorContractsCache: VendorContract[] = [];
+let vendorSearch = "";
+let contractSearch = "";
 let taskFilter: BoardTaskStatus | "all" = "all";
 let parkingSpacesCache: ParkingSpace[] = [];
+let parkingSpaceSearch = "";
+let parkingPermitSearch = "";
 let residentRequestFilter: ResidentRequestStatus | "all" = "all";
+let residentRequestSearch = "";
 let lendingItemsCache: LendingItem[] = [];
+let circularSearch = "";
+let circularAckSearch = "";
+let lendingItemSearch = "";
+let lendingRequestSearch = "";
 let dutyFilter: DutyStatus | "all" = "all";
+let dutySearch = "";
+let ownDutySearch = "";
 let meetingSessionsCache: MeetingSession[] = [];
 let meetingAgendaCache: MeetingAgendaItem[] = [];
+let meetingSearch = "";
+let agendaSearch = "";
 let inspectionPlansCache: InspectionPlan[] = [];
 let inspectionAssetsCache: AssetItem[] = [];
+let inspectionPlanSearch = "";
+let inspectionRecordSearch = "";
+let wasteScheduleSearch = "";
+let bulkyRequestSearch = "";
+let activityLogsCache: ActivityLog[] = [];
 
 type DocumentRealtimeChannel = {
   on: (type: string, filter: { event?: string }, callback: (payload: { event?: string; payload: unknown }) => void) => DocumentRealtimeChannel;
@@ -524,12 +559,26 @@ type DocumentRealtimeChannel = {
 
 type DocumentCollabSession = {
   documentId: string;
-  ydoc: Y.Doc;
-  ytext: Y.Text;
-  awareness: Awareness;
-  editor: EditorView;
+  runtime: DocumentCollabRuntime;
+  ydoc: any;
+  ytext: any;
+  awareness: any;
+  editor: any;
   channel: DocumentRealtimeChannel | null;
   destroy: () => void;
+};
+
+type DocumentCollabRuntime = {
+  Y: typeof import("yjs");
+  Awareness: typeof import("y-protocols/awareness").Awareness;
+  encodeAwarenessUpdate: typeof import("y-protocols/awareness").encodeAwarenessUpdate;
+  applyAwarenessUpdate: typeof import("y-protocols/awareness").applyAwarenessUpdate;
+  EditorState: typeof import("@codemirror/state").EditorState;
+  EditorView: typeof import("@codemirror/view").EditorView;
+  placeholder: typeof import("@codemirror/view").placeholder;
+  basicSetup: typeof import("codemirror").basicSetup;
+  markdown: typeof import("@codemirror/lang-markdown").markdown;
+  yCollab: typeof import("y-codemirror.next").yCollab;
 };
 
 type MockRealtime = {
@@ -549,6 +598,7 @@ const roleLabels: Record<Role, string> = {
   president: "理事長",
   admin: "管理者",
 };
+const assignableRoles: Role[] = ["resident", "board_member", "chair", "president", "admin"];
 
 const statusLabels: Record<BookingStatus, string> = {
   pending: "承認待ち",
@@ -694,6 +744,12 @@ const residentRequestCategoryLabels: Record<ResidentRequestCategory, string> = {
   other: "その他",
 };
 
+const residentRequestVisibilityLabels: Record<ResidentRequestVisibility, string> = {
+  private: "理事・管理者のみ",
+  board: "理事会共有",
+  public: "住民共有",
+};
+
 const residentRequestStatusLabels: Record<ResidentRequestStatus, string> = {
   open: "受付中",
   in_progress: "対応中",
@@ -828,6 +884,199 @@ function setStatus(selector: string, message: string, error = false) {
   element.textContent = message;
   element.classList.toggle("error", error);
   animateStatus(selector, error);
+}
+
+function showToast(message: string, variant: "success" | "error" = "success") {
+  let region = qs<HTMLDivElement>("[data-toast-region]");
+  if (!region) {
+    region = document.createElement("div");
+    region.className = "toast-region";
+    region.dataset.toastRegion = "";
+    region.setAttribute("aria-live", "polite");
+    region.setAttribute("aria-atomic", "false");
+    document.body.append(region);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${variant}`;
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `<strong>${variant === "error" ? "処理できませんでした" : "完了しました"}</strong><span></span>`;
+  const body = toast.querySelector("span");
+  if (body) body.textContent = message;
+  region.append(toast);
+
+  animate(toast, {
+    opacity: [0, 1],
+    translateY: [8, 0],
+    duration: 180,
+    easing: "easeOutQuad",
+  });
+
+  window.setTimeout(() => {
+    animate(toast, {
+      opacity: [1, 0],
+      translateY: [0, 8],
+      duration: 180,
+      easing: "easeInQuad",
+      onComplete: () => toast.remove(),
+    });
+  }, 5200);
+}
+
+function showErrorToast(message: string) {
+  showToast(message, "error");
+}
+
+function confirmAction(message: string) {
+  return window.confirm(message);
+}
+
+function confirmDocumentAction(status: DocumentStatus) {
+  const messages: Partial<Record<DocumentStatus, string>> = {
+    approved: "この管理文書を承認しますか？",
+    rejected: "この管理文書を差戻しますか？",
+    archived: "この管理文書を保管しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmParkingAction(status: ParkingPermitStatus) {
+  const messages: Partial<Record<ParkingPermitStatus, string>> = {
+    active: "この駐車・駐輪申請を承認しますか？",
+    rejected: "この駐車・駐輪申請を却下しますか？",
+    ended: "この駐車・駐輪利用を終了しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmCircularAction(status: CircularStatus) {
+  if (status !== "archived") return true;
+  return confirmAction("この回覧を保管しますか？");
+}
+
+function confirmLendingAction(status: LendingRequestStatus) {
+  const messages: Partial<Record<LendingRequestStatus, string>> = {
+    checked_out: "この貸出申請を貸出承認しますか？",
+    rejected: "この貸出申請を却下しますか？",
+    returned: "この貸出を返却済みにしますか？",
+    lost: "この貸出品を紛失として記録しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmMaintenanceAction(status: MaintenanceStatus) {
+  const messages: Partial<Record<MaintenanceStatus, string>> = {
+    resolved: "この修繕依頼を完了にしますか？",
+    closed: "この修繕依頼を終了しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmSurveyAction() {
+  return confirmAction("この意見募集を締切りますか？");
+}
+
+function confirmSafetyAction(status: SafetyEventStatus) {
+  const messages: Partial<Record<SafetyEventStatus, string>> = {
+    completed: "この防災・安否イベントを完了にしますか？",
+    cancelled: "この防災・安否イベントを中止しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmTaskAction(status: BoardTaskStatus) {
+  const messages: Partial<Record<BoardTaskStatus, string>> = {
+    done: "この理事会タスクを完了にしますか？",
+    cancelled: "この理事会タスクを中止しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmResidentRequestAction(status: ResidentRequestStatus) {
+  const messages: Partial<Record<ResidentRequestStatus, string>> = {
+    resolved: "この住民相談を完了にしますか？",
+    closed: "この住民相談を終了しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmDutyAction(status: DutyStatus) {
+  const messages: Partial<Record<DutyStatus, string>> = {
+    done: "この当番を完了にしますか？",
+    missed: "この当番を未実施にしますか？",
+    cancelled: "この当番を中止しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmBulkyWasteAction(status: BulkyWasteStatus) {
+  const messages: Partial<Record<BulkyWasteStatus, string>> = {
+    scheduled: "この粗大ごみ申請を予約済みにしますか？",
+    completed: "この粗大ごみ申請を完了にしますか？",
+    cancelled: "この粗大ごみ申請を取消しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function confirmMeetingAction(status: MeetingStatus) {
+  const messages: Partial<Record<MeetingStatus, string>> = {
+    closed: "この会議を終了しますか？",
+    cancelled: "この会議を中止しますか？",
+  };
+  const message = messages[status];
+  return !message || confirmAction(message);
+}
+
+function nullableUuid(value: string | null | undefined) {
+  if (!value) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : null;
+}
+
+async function recordActivity(entityType: string, entityId: string | null | undefined, action: string, detail: string) {
+  if (!currentProfile) return;
+  const { error } = await supabase!.from("activity_logs").insert({
+    actor_id: currentProfile.id,
+    entity_type: entityType,
+    entity_id: nullableUuid(entityId),
+    action,
+    detail,
+  });
+  if (error) {
+    console.warn(`activity log skipped: ${error.message}`);
+  }
+}
+
+async function loadDocumentCollabRuntime() {
+  documentCollabRuntimePromise ??= Promise.all([
+    import("yjs"),
+    import("y-protocols/awareness"),
+    import("@codemirror/state"),
+    import("@codemirror/view"),
+    import("codemirror"),
+    import("@codemirror/lang-markdown"),
+    import("y-codemirror.next"),
+  ]).then(([Y, awarenessModule, stateModule, viewModule, codemirrorModule, markdownModule, yCodemirrorModule]) => ({
+    Y,
+    Awareness: awarenessModule.Awareness,
+    encodeAwarenessUpdate: awarenessModule.encodeAwarenessUpdate,
+    applyAwarenessUpdate: awarenessModule.applyAwarenessUpdate,
+    EditorState: stateModule.EditorState,
+    EditorView: viewModule.EditorView,
+    placeholder: viewModule.placeholder,
+    basicSetup: codemirrorModule.basicSetup,
+    markdown: markdownModule.markdown,
+    yCollab: yCodemirrorModule.yCollab,
+  }));
+  return documentCollabRuntimePromise;
 }
 
 function shouldReduceMotion() {
@@ -995,6 +1244,16 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function normalizeSearchText(value: string | number | null | undefined) {
+  return String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function includesSearch(terms: Array<string | number | null | undefined>, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery) return true;
+  return terms.some((term) => normalizeSearchText(term).includes(normalizedQuery));
+}
+
 function canManage() {
   return currentProfile?.role === "admin" || currentProfile?.role === "board_member";
 }
@@ -1005,6 +1264,10 @@ function canManageDocuments() {
 
 function isAdmin() {
   return currentProfile?.role === "admin";
+}
+
+function isTargetedToCurrentRole(item: { target_role: Role | "all" }) {
+  return item.target_role === "all" || item.target_role === currentProfile?.role || canManage();
 }
 
 function requireClient() {
@@ -1054,6 +1317,8 @@ async function init() {
   setText("[data-user-name]", currentProfile.display_name || data.session.user.email || "ユーザー");
   setText("[data-user-role]", roleLabels[currentProfile.role]);
   initSidebarMenu();
+  applyRoleNavigation();
+  initGlobalSearch();
 
   qs("[data-action='sign-out']")?.addEventListener("click", async () => {
     await supabase!.auth.signOut();
@@ -1114,6 +1379,140 @@ function initSidebarMenu() {
   });
 }
 
+function applyRoleNavigation() {
+  if (!isAdmin()) qs("[data-nav-group='admin']")?.remove();
+}
+
+function initGlobalSearch() {
+  const search = qs<HTMLElement>("[data-global-search]");
+  const input = qs<HTMLInputElement>("[data-global-search-input]");
+  const results = qs<HTMLElement>("[data-global-search-results]");
+  if (!search || !input || !results) return;
+  let activeIndex = -1;
+  const normalizeSearchText = (value: string) => value.toLowerCase();
+  const compactSearchText = (value: string) => normalizeSearchText(value).replace(/\s+/g, "");
+  const keywordByLabel: Record<string, string> = {
+    ホーム: "dashboard ダッシュボード 今日 対応 期限",
+    会議室: "予約 承認 却下 利用 部屋",
+    "通知・課題": "お知らせ 課題 未読 共有",
+    年間行事: "行事 イベント 予定 カレンダー",
+    相談苦情: "相談 苦情 要望 受付 対応",
+    ごみ資源: "ごみ 資源 粗大 粗大ごみ 申請 受付待ち 回収",
+    管理文書: "文書 承認 稟議 議事録 規約",
+    意見収集: "アンケート 投票 意見",
+    理事タスク: "タスク 担当 進捗 理事 期限 期限超過 期日",
+    回覧配布: "回覧 配布 確認 未確認 未読",
+    会議治理: "会議 議案 採決 出欠",
+    修繕工事: "修繕 依頼 工事 故障",
+    収支台帳: "会計 収支 収入 支出",
+    資産台帳: "資産 点検 備品",
+    業者契約: "業者 契約 更新 委託",
+    住民名簿: "住民 世帯 名簿",
+    防災安否: "防災 安否 訓練",
+    駐車駐輪: "駐車 駐輪 申請 承認",
+    鍵貸出: "鍵 備品 貸出 返却 承認",
+    当番巡回: "当番 巡回 予定",
+    長期点検: "点検 長期 期限 計画",
+    管理: "管理 権限 ユーザー 履歴 操作",
+  };
+
+  const items = qsa<HTMLAnchorElement>(".nav .nav-link")
+    .filter((link) => !link.closest(".nav-section")?.classList.contains("hidden"))
+    .map((link) => {
+      const section = link.closest(".nav-section");
+      const group = section?.querySelector(".nav-group-label")?.textContent?.trim() ?? "";
+      const label = link.textContent?.trim() ?? "";
+      const keywords = keywordByLabel[label] ?? "";
+      return {
+        href: link.href,
+        label,
+        group,
+        haystack: normalizeSearchText(`${label} ${group} ${keywords}`),
+        compactHaystack: compactSearchText(`${label} ${group} ${keywords}`),
+      };
+    });
+
+  const closeResults = () => {
+    activeIndex = -1;
+    results.classList.add("hidden");
+    results.innerHTML = "";
+  };
+
+  const getResultLinks = () => qsa<HTMLAnchorElement>("[data-global-search-link]");
+
+  const setActiveResult = (nextIndex: number) => {
+    const links = getResultLinks();
+    if (!links.length) {
+      activeIndex = -1;
+      return;
+    }
+
+    activeIndex = (nextIndex + links.length) % links.length;
+    links.forEach((link, index) => {
+      link.setAttribute("aria-selected", String(index === activeIndex));
+      if (index === activeIndex) link.scrollIntoView({ block: "nearest" });
+    });
+  };
+
+  const renderResults = () => {
+    const query = normalizeSearchText(input.value.trim());
+    if (!query) {
+      closeResults();
+      return;
+    }
+
+    const compactQuery = compactSearchText(query);
+    const matches = items.filter((item) => item.haystack.includes(query) || item.compactHaystack.includes(compactQuery)).slice(0, 8);
+    activeIndex = matches.length ? 0 : -1;
+    results.classList.remove("hidden");
+    results.innerHTML = matches.length
+      ? matches
+          .map(
+            (item, index) => `
+              <a class="global-search-link" href="${escapeHtml(item.href)}" data-global-search-link aria-selected="${index === activeIndex}">
+                <strong>${escapeHtml(item.label)}</strong>
+                <span>${escapeHtml(item.group)}</span>
+              </a>
+            `,
+          )
+          .join("")
+      : `<p class="global-search-empty">該当する画面はありません。</p>`;
+  };
+
+  input.addEventListener("input", renderResults);
+  input.addEventListener("focus", renderResults);
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (results.classList.contains("hidden")) renderResults();
+      setActiveResult(activeIndex + 1);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      if (results.classList.contains("hidden")) renderResults();
+      setActiveResult(activeIndex - 1);
+      return;
+    }
+    if (event.key === "Enter") {
+      const links = getResultLinks();
+      if (links[activeIndex]) {
+        event.preventDefault();
+        links[activeIndex].click();
+      }
+      return;
+    }
+    if (event.key === "Escape") {
+      input.value = "";
+      closeResults();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (event.target instanceof Node && search.contains(event.target)) return;
+    closeResults();
+  });
+}
+
 async function initLogin() {
   const { data } = await supabase!.auth.getSession();
   if (data.session) {
@@ -1168,32 +1567,262 @@ async function loadProfile(userId: string, email: string): Promise<Profile> {
 }
 
 async function initHome() {
-  const [{ data: bookings }, { data: notices }, { data: events }, { data: documents }, unread] = await Promise.all([
+  const [
+    { data: bookings },
+    { data: notices },
+    { data: events },
+    { data: documents },
+    { data: maintenanceRequests },
+    { data: parkingPermits },
+    { data: residentRequests },
+    { data: lendingRequests },
+    { data: circulars },
+    { data: circularAcknowledgements },
+    { data: bulkyWasteRequests },
+    { data: boardTasks },
+    { data: assets },
+    { data: contracts },
+    { data: duties },
+    { data: inspectionPlans },
+    unread,
+  ] = await Promise.all([
     supabase!
       .from("room_bookings")
-      .select("id, purpose, start_at, end_at, status, rooms(name)")
+      .select("id, user_id, purpose, start_at, end_at, status, rooms(name)")
       .order("start_at", { ascending: true })
       .limit(5),
-    supabase!.from("notices").select("*").order("created_at", { ascending: false }).limit(5),
+    supabase!.from("notices").select("*").order("created_at", { ascending: false }).limit(20),
     supabase!.from("events").select("*").order("start_at", { ascending: true }).limit(5),
     supabase!.from("management_documents").select("id, status").in("status", ["review", "board_review", "chair_review", "president_review"]),
+    supabase!.from("maintenance_requests").select("id, title, status, requester_id").in("status", ["open", "in_progress"]),
+    supabase!.from("parking_permits").select("id, user_id, vehicle_label, status").eq("status", "pending"),
+    supabase!.from("resident_requests").select("id, title, status, requester_id").in("status", ["open", "in_progress"]),
+    supabase!.from("lending_requests").select("id, user_id, purpose, status").in("status", ["pending", "checked_out"]),
+    supabase!.from("circulars").select("id, title, status, target_role, due_date").eq("status", "published"),
+    supabase!.from("circular_acknowledgements").select("circular_id").eq("user_id", currentProfile!.id),
+    supabase!.from("bulky_waste_requests").select("id, user_id, item_name, status").eq("status", "submitted"),
+    supabase!.from("board_tasks").select("id, title, status, due_date, assignee_id").in("status", ["open", "in_progress"]),
+    supabase!.from("asset_items").select("id, name, status, inspection_due_at"),
+    supabase!.from("vendor_contracts").select("id, title, status, end_date").order("end_date", { ascending: true }),
+    supabase!.from("duty_assignments").select("id, title, status, scheduled_date, assignee_id"),
+    supabase!.from("inspection_plans").select("id, title, is_active, next_due_date").eq("is_active", true),
     countUnreadNotices(),
   ]);
 
   const pendingBookings = (bookings ?? []).filter((booking) => booking.status === "pending").length;
   const pendingDocuments = documents?.length ?? 0;
+  const canHandleOperations = canManage();
+  const canHandleDocuments = canManageDocuments();
   const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const dueSoon = new Date(now);
+  dueSoon.setDate(now.getDate() + 7);
+  const dueLimit = dueSoon.toISOString().slice(0, 10);
   const monthEvents = (events ?? []).filter((event) => {
     const date = new Date(event.start_at);
     return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
   }).length;
+  const openMaintenance = (maintenanceRequests ?? []).filter((item) => item.status === "open").length;
+  const openResidentRequests = (residentRequests ?? []).filter((item) => item.status === "open").length;
+  const pendingParking = (parkingPermits ?? []).filter((item) => item.status === "pending").length;
+  const pendingLending = (lendingRequests ?? []).filter((item) => item.status === "pending").length;
+  const ownOpenMaintenance = (maintenanceRequests ?? []).filter((item) => item.status === "open" && item.requester_id === currentProfile?.id).length;
+  const ownOpenResidentRequests = (residentRequests ?? []).filter((item) => item.status === "open" && item.requester_id === currentProfile?.id).length;
+  const ownPendingParking = (parkingPermits ?? []).filter((item) => item.status === "pending" && item.user_id === currentProfile?.id).length;
+  const ownPendingLending = (lendingRequests ?? []).filter((item) => item.status === "pending" && item.user_id === currentProfile?.id).length;
+  const acknowledgedCircularIds = new Set((circularAcknowledgements ?? []).map((item) => item.circular_id));
+  const visibleCirculars = ((circulars ?? []) as Pick<Circular, "id" | "target_role">[]).filter(isTargetedToCurrentRole);
+  const unreadCirculars = visibleCirculars.filter((item) => !acknowledgedCircularIds.has(item.id)).length;
+  const submittedBulkyWaste = (bulkyWasteRequests ?? []).filter((item) => item.status === "submitted").length;
+  const ownSubmittedBulkyWaste = (bulkyWasteRequests ?? []).filter((item) => item.status === "submitted" && item.user_id === currentProfile?.id).length;
+  const boardTaskDueItems = (boardTasks ?? []).filter(
+    (item) => item.status !== "done" && item.due_date && item.due_date <= dueLimit && (canHandleOperations || item.assignee_id === currentProfile?.id),
+  );
+  const assetDueItems = (assets ?? []).filter((item) => item.inspection_due_at && item.inspection_due_at <= dueLimit);
+  const inspectionDueItems = (inspectionPlans ?? []).filter((item) => item.is_active && item.next_due_date <= dueLimit);
+  const dutyDueItems = (duties ?? []).filter((item) => item.status === "planned" && item.scheduled_date <= today && (canHandleOperations || item.assignee_id === currentProfile?.id));
+  const contractRiskItems = (contracts ?? []).filter((item) => item.status === "renewal_due" || item.status === "expired" || contractStatusFromEndDate(item.end_date) !== "active");
+  const visibleBookings = canHandleOperations ? (bookings ?? []) : (bookings ?? []).filter((booking) => booking.user_id === currentProfile?.id);
 
-  setText("[data-metric='pending-bookings']", String(pendingBookings + pendingDocuments));
+  const actionItems: HomeWorkItem[] = [
+    ...(canHandleOperations
+      ? [
+          {
+            title: "会議室予約の承認",
+            detail: `${pendingBookings}件の予約が承認待ちです。`,
+            href: route("/rooms/"),
+            badge: String(pendingBookings),
+            tone: pendingBookings ? "warning" : "success",
+          },
+        ]
+      : []),
+    ...(!canHandleOperations
+      ? [
+          {
+            title: "修繕依頼の状況",
+            detail: `${ownOpenMaintenance}件の依頼が受付中です。`,
+            href: route("/maintenance/"),
+            badge: String(ownOpenMaintenance),
+            tone: ownOpenMaintenance ? "warning" : "success",
+          },
+          {
+            title: "相談・苦情の状況",
+            detail: `${ownOpenResidentRequests}件の相談が受付中です。`,
+            href: route("/requests/"),
+            badge: String(ownOpenResidentRequests),
+            tone: ownOpenResidentRequests ? "warning" : "success",
+          },
+          {
+            title: "駐車・駐輪申請",
+            detail: `${ownPendingParking}件の申請が承認待ちです。`,
+            href: route("/parking/"),
+            badge: String(ownPendingParking),
+            tone: ownPendingParking ? "warning" : "success",
+          },
+          {
+            title: "鍵・備品貸出",
+            detail: `${ownPendingLending}件の申請が承認待ちです。`,
+            href: route("/lending/"),
+            badge: String(ownPendingLending),
+            tone: ownPendingLending ? "warning" : "success",
+          },
+        ]
+      : []),
+    ...(canHandleDocuments
+      ? [
+          {
+            title: "管理文書の承認",
+            detail: `${pendingDocuments}件の文書が承認フロー中です。`,
+            href: route("/documents/"),
+            badge: String(pendingDocuments),
+            tone: pendingDocuments ? "warning" : "success",
+          },
+        ]
+      : []),
+    ...(canHandleOperations
+      ? [
+          {
+            title: "修繕依頼の受付",
+            detail: `${openMaintenance}件が未着手です。`,
+            href: route("/maintenance/"),
+            badge: String(openMaintenance),
+            tone: openMaintenance ? "warning" : "success",
+          },
+          {
+            title: "相談・苦情の受付",
+            detail: `${openResidentRequests}件が受付中です。`,
+            href: route("/requests/"),
+            badge: String(openResidentRequests),
+            tone: openResidentRequests ? "warning" : "success",
+          },
+          {
+            title: "駐車・駐輪申請",
+            detail: `${pendingParking}件が承認待ちです。`,
+            href: route("/parking/"),
+            badge: String(pendingParking),
+            tone: pendingParking ? "warning" : "success",
+          },
+          {
+            title: "鍵・備品貸出",
+            detail: `${pendingLending}件が貸出承認待ちです。`,
+            href: route("/lending/"),
+            badge: String(pendingLending),
+            tone: pendingLending ? "warning" : "success",
+          },
+        ]
+      : []),
+    {
+      title: "回覧の確認",
+      detail: `${unreadCirculars}件の未確認回覧があります。`,
+      href: route("/circulars/"),
+      badge: String(unreadCirculars),
+      tone: unreadCirculars ? "warning" : "success",
+    },
+    {
+      title: "粗大ごみ申請",
+      detail: `${canHandleOperations ? submittedBulkyWaste : ownSubmittedBulkyWaste}件が受付待ちです。`,
+      href: route("/waste/"),
+      badge: String(canHandleOperations ? submittedBulkyWaste : ownSubmittedBulkyWaste),
+      tone: (canHandleOperations ? submittedBulkyWaste : ownSubmittedBulkyWaste) ? "warning" : "success",
+    },
+  ];
+  const riskItems: HomeWorkItem[] = [
+    ...(canHandleOperations
+      ? [
+          {
+            title: "資産点検期限",
+            detail: `${assetDueItems.length}件が期限内または期限超過です。`,
+            href: route("/assets/"),
+            badge: String(assetDueItems.length),
+            tone: assetDueItems.length ? "danger" : "success",
+          },
+          {
+            title: "長期点検期限",
+            detail: `${inspectionDueItems.length}件の点検計画が近づいています。`,
+            href: route("/inspections/"),
+            badge: String(inspectionDueItems.length),
+            tone: inspectionDueItems.length ? "warning" : "success",
+          },
+        ]
+      : []),
+    {
+      title: "当番・巡回期限",
+      detail: `${dutyDueItems.length}件が本日以前の予定です。`,
+      href: route("/duties/"),
+      badge: String(dutyDueItems.length),
+      tone: dutyDueItems.length ? "warning" : "success",
+    },
+    {
+      title: "理事会タスク期限",
+      detail: `${boardTaskDueItems.length}件が期限内または期限超過です。`,
+      href: route("/tasks/"),
+      badge: String(boardTaskDueItems.length),
+      tone: boardTaskDueItems.length ? "warning" : "success",
+    },
+    ...(canHandleOperations
+      ? [
+          {
+            title: "契約更新注意",
+            detail: `${contractRiskItems.length}件の契約を確認できます。`,
+            href: route("/vendors/"),
+            badge: String(contractRiskItems.length),
+            tone: contractRiskItems.length ? "warning" : "success",
+          },
+        ]
+      : []),
+  ];
+
+  setText("[data-metric='pending-bookings']", String((canHandleOperations ? pendingBookings : 0) + (canHandleDocuments ? pendingDocuments : 0)));
   setText("[data-metric='unread-notices']", String(unread));
   setText("[data-metric='month-events']", String(monthEvents));
-  renderBookingList("[data-home-bookings]", (bookings ?? []) as Booking[]);
-  renderNoticeList("[data-home-notices]", (notices ?? []) as Notice[], false);
+  setText("[data-metric='home-actions']", String(actionItems.reduce((sum, item) => sum + Number(item.badge ?? 0), 0)));
+  setText("[data-metric='home-risks']", String(riskItems.reduce((sum, item) => sum + Number(item.badge ?? 0), 0)));
+  renderHomeWorkItems("[data-home-actions]", actionItems);
+  renderHomeWorkItems("[data-home-risk-list]", riskItems);
+  renderBookingList("[data-home-bookings]", visibleBookings as Booking[]);
+  renderNoticeList("[data-home-notices]", ((notices ?? []) as Notice[]).filter(isTargetedToCurrentRole).slice(0, 5), false);
   renderEventList("[data-home-events]", (events ?? []) as EventItem[]);
+}
+
+function renderHomeWorkItems(selector: string, items: HomeWorkItem[]) {
+  const container = qs(selector);
+  if (!container) return;
+  container.innerHTML = items
+    .map(
+      (item) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${escapeHtml(item.title)}</strong>
+              <p class="meta">${escapeHtml(item.detail)}</p>
+            </div>
+            <span class="badge ${item.tone ?? ""}">${escapeHtml(item.badge ?? "")}</span>
+          </div>
+          <a class="text-link" href="${item.href}">確認する</a>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 async function initRooms() {
@@ -1221,14 +1850,15 @@ async function initRooms() {
       return;
     }
 
-    const { error } = await supabase!.from("room_bookings").insert({
+    const purpose = String(form.get("purpose"));
+    const { data: booking, error } = await supabase!.from("room_bookings").insert({
       room_id: roomId,
       user_id: currentProfile!.id,
-      purpose: String(form.get("purpose")),
+      purpose,
       start_at: startAt.toISOString(),
       end_at: endAt.toISOString(),
       status: "pending",
-    });
+    }).select("id").single();
 
     if (error) {
       setStatus("[data-booking-status]", error.message, true);
@@ -1237,6 +1867,7 @@ async function initRooms() {
 
     formElement.reset();
     setStatus("[data-booking-status]", "予約申請を送信しました。");
+    await recordActivity("room_booking", booking?.id ?? purpose, "created", `会議室予約 ${purpose} を申請しました。`);
     await refreshBookingCalendar();
   });
 
@@ -1677,15 +2308,18 @@ function renderPendingBookings(bookings: Booking[]) {
 }
 
 async function updateBookingStatus(id: string, status: BookingStatus) {
+  if (status === "approved" && !confirmAction("この会議室予約を承認しますか？")) return;
+  if (status === "rejected" && !confirmAction("この会議室予約を却下しますか？")) return;
+
   if (status === "approved") {
     const booking = bookingsCache.find((item) => item.id === id);
     if (!booking) {
-      alert("予約情報を読み込めませんでした。");
+      showErrorToast("予約情報を読み込めませんでした。");
       return;
     }
     const hasOverlap = await checkBookingOverlap(booking.room_id, booking.start_at, booking.end_at, booking.id);
     if (hasOverlap) {
-      alert("同じ時間帯に既に承認済みの予約があるため承認できません。");
+      showErrorToast("同じ時間帯に既に承認済みの予約があるため承認できません。");
       return;
     }
   }
@@ -1695,9 +2329,10 @@ async function updateBookingStatus(id: string, status: BookingStatus) {
     .update({ status, approved_by: currentProfile!.id, approved_at: new Date().toISOString() })
     .eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("room_booking", id, status, status === "approved" ? "会議室予約を承認しました。" : "会議室予約を却下しました。");
   await refreshBookingCalendar();
 }
 
@@ -1728,26 +2363,28 @@ async function initNotices() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("notices").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: notice, error } = await supabase!.from("notices").insert({
+      title,
       body: String(form.get("body")),
       kind: String(form.get("kind")),
       target_role: String(form.get("target_role")),
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-notice-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-notice-status]", "通知を発行しました。");
+    await recordActivity("notice", notice?.id ?? title, "created", `通知 ${title} を発行しました。`);
     await renderNoticesPage();
   });
 }
 
 async function renderNoticesPage() {
   const { data } = await supabase!.from("notices").select("*").order("created_at", { ascending: false });
-  renderNoticeList("[data-notice-list]", (data ?? []) as Notice[], true);
+  renderNoticeList("[data-notice-list]", ((data ?? []) as Notice[]).filter(isTargetedToCurrentRole), true);
 }
 
 function renderNoticeList(selector: string, notices: Notice[], canMarkRead: boolean) {
@@ -1764,7 +2401,7 @@ function renderNoticeList(selector: string, notices: Notice[], canMarkRead: bool
           <div class="list-row">
             <div>
               <strong>${escapeHtml(notice.title)}</strong>
-              <p class="meta">${noticeKindLabels[notice.kind]} / ${formatDateTime(notice.created_at)} / ${escapeHtml(notice.target_role)}</p>
+              <p class="meta">${noticeKindLabels[notice.kind]} / ${formatDateTime(notice.created_at)} / 対象 ${roleLabels[notice.target_role as Role] ?? "全員"}</p>
             </div>
             <span class="badge">${escapeHtml(noticeKindLabels[notice.kind])}</span>
           </div>
@@ -1789,10 +2426,10 @@ function renderNoticeList(selector: string, notices: Notice[], canMarkRead: bool
 }
 
 async function countUnreadNotices() {
-  const { data: notices } = await supabase!.from("notices").select("id");
+  const { data: notices } = await supabase!.from("notices").select("id, target_role");
   const { data: reads } = await supabase!.from("notice_reads").select("notice_id").eq("user_id", currentProfile!.id);
   const readIds = new Set((reads ?? []).map((read) => read.notice_id));
-  return (notices ?? []).filter((notice) => !readIds.has(notice.id)).length;
+  return ((notices ?? []) as Pick<Notice, "id" | "target_role">[]).filter((notice) => isTargetedToCurrentRole(notice) && !readIds.has(notice.id)).length;
 }
 
 async function initEvents() {
@@ -1813,20 +2450,22 @@ async function initEvents() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("events").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: eventItem, error } = await supabase!.from("events").insert({
+      title,
       description: String(form.get("description") || ""),
       location: String(form.get("location") || ""),
       start_at: new Date(String(form.get("start_at"))).toISOString(),
       end_at: form.get("end_at") ? new Date(String(form.get("end_at"))).toISOString() : null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-event-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-event-status]", "行事を保存しました。");
+    await recordActivity("event", eventItem?.id ?? title, "created", `行事 ${title} を保存しました。`);
     await renderEventsPage();
   });
 }
@@ -1884,6 +2523,11 @@ async function initDocuments() {
     });
   });
 
+  qs<HTMLInputElement>("[data-document-search]")?.addEventListener("input", async (event) => {
+    documentSearch = event.currentTarget.value;
+    await renderDocumentsPage();
+  });
+
   qs<HTMLFormElement>("[data-document-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
@@ -1891,7 +2535,7 @@ async function initDocuments() {
     const form = new FormData(formElement);
     const title = String(form.get("title"));
     const markdownBody = String(form.get("markdown_body") || "").trim();
-    const { error } = await supabase!.from("management_documents").insert({
+    const { data: document, error } = await supabase!.from("management_documents").insert({
       title,
       kind: String(form.get("kind")),
       version: String(form.get("version") || "1.0"),
@@ -1900,7 +2544,7 @@ async function initDocuments() {
       status: "board_review",
       created_by: currentProfile!.id,
       updated_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-document-status]", error.message, true);
       return;
@@ -1909,6 +2553,7 @@ async function initDocuments() {
     const version = qs<HTMLInputElement>("#document-version");
     if (version) version.value = "1.0";
     setStatus("[data-document-status]", "文書を審査へ回しました。");
+    await recordActivity("management_document", document?.id ?? title, "created", `管理文書 ${title} を審査へ回しました。`);
     await renderDocumentsPage();
   });
 }
@@ -1936,10 +2581,24 @@ async function renderDocumentsPage() {
   ]);
 
   const allDocuments = ((documents ?? []) as ManagementDocument[]).filter((document) => documentFilter !== "review" || isDocumentApprovalStatus(document.status));
+  const visibleDocuments = allDocuments.filter((document) =>
+    includesSearch(
+      [
+        document.title,
+        document.version,
+        document.summary,
+        document.markdown_body,
+        document.profiles?.display_name,
+        documentKindLabels[document.kind],
+        documentStatusLabels[document.status],
+      ],
+      documentSearch,
+    ),
+  );
   setText("[data-metric='review-documents']", String(allDocuments.filter((document) => isDocumentApprovalStatus(document.status)).length));
   setText("[data-metric='approved-documents']", String(allDocuments.filter((document) => document.status === "approved").length));
   setText("[data-metric='sealed-documents']", String((seals ?? []).length));
-  renderDocumentList(allDocuments);
+  renderDocumentList(visibleDocuments);
   renderDocumentApprovals((approvals ?? []) as DocumentApproval[]);
   renderDocumentSeals((seals ?? []) as DocumentSeal[]);
 }
@@ -1972,7 +2631,7 @@ function renderDocumentList(documents: ManagementDocument[]) {
   const container = qs("[data-document-list]");
   if (!container) return;
   if (!documents.length) {
-    container.innerHTML = `<p class="meta">文書はありません。</p>`;
+    container.innerHTML = `<p class="meta">${documentSearch ? "検索条件に一致する文書はありません。" : "文書はありません。"}</p>`;
     return;
   }
 
@@ -2088,13 +2747,14 @@ async function startDocumentCollabSession(document: ManagementDocument) {
   const parent = qs<HTMLElement>("[data-document-editor]");
   if (!parent) return;
   parent.innerHTML = "";
+  const runtime = await loadDocumentCollabRuntime();
 
-  const ydoc = new Y.Doc();
+  const ydoc = new runtime.Y.Doc();
   const ytext = ydoc.getText("markdown");
   const snapshot = await loadDocumentCrdtSnapshot(document.id);
   if (snapshot) {
     try {
-      Y.applyUpdate(ydoc, decodeBytea(snapshot.yjs_update));
+      runtime.Y.applyUpdate(ydoc, decodeBytea(snapshot.yjs_update));
     } catch {
       ytext.insert(0, snapshot.markdown_body || documentMarkdown(document));
     }
@@ -2102,7 +2762,7 @@ async function startDocumentCollabSession(document: ManagementDocument) {
     ytext.insert(0, documentMarkdown(document));
   }
 
-  const awareness = new Awareness(ydoc);
+  const awareness = new runtime.Awareness(ydoc);
   const userColor = colorForUser(currentProfile?.id ?? "user");
   awareness.setLocalStateField("user", {
     name: currentProfile?.display_name ?? "担当者",
@@ -2110,17 +2770,17 @@ async function startDocumentCollabSession(document: ManagementDocument) {
     colorLight: `${userColor}33`,
   });
 
-  const channel = createDocumentRealtimeChannel(document.id, ydoc, awareness);
-  const view = new EditorView({
-    state: EditorState.create({
+  const channel = createDocumentRealtimeChannel(document.id, ydoc, awareness, runtime);
+  const view = new runtime.EditorView({
+    state: runtime.EditorState.create({
       doc: ytext.toString(),
       extensions: [
-        basicSetup,
-        markdown(),
-        EditorView.lineWrapping,
-        placeholder("Markdownで本文を編集します。"),
-        yCollab(ytext, awareness),
-        EditorView.updateListener.of((update) => {
+        runtime.basicSetup,
+        runtime.markdown(),
+        runtime.EditorView.lineWrapping,
+        runtime.placeholder("Markdownで本文を編集します。"),
+        runtime.yCollab(ytext, awareness),
+        runtime.EditorView.updateListener.of((update) => {
           if (update.docChanged) renderMarkdownPreview(ytext.toString());
         }),
       ],
@@ -2133,6 +2793,7 @@ async function startDocumentCollabSession(document: ManagementDocument) {
   updatePreview();
   documentCollab = {
     documentId: document.id,
+    runtime,
     ydoc,
     ytext,
     awareness,
@@ -2161,7 +2822,7 @@ async function loadDocumentCrdtSnapshot(documentId: string) {
   return ((data ?? []) as DocumentCrdtSnapshot[])[0] ?? null;
 }
 
-function createDocumentRealtimeChannel(documentId: string, ydoc: Y.Doc, awareness: Awareness) {
+function createDocumentRealtimeChannel(documentId: string, ydoc: any, awareness: any, runtime: DocumentCollabRuntime) {
   const topic = `document-crdt:${documentId}`;
   const channel = window.__MEJIRO_MOCK_REALTIME__?.channel(topic)
     ?? supabase!.channel(topic, { config: { broadcast: { self: false }, presence: { key: currentProfile?.id ?? "user" } } }) as unknown as DocumentRealtimeChannel;
@@ -2170,11 +2831,11 @@ function createDocumentRealtimeChannel(documentId: string, ydoc: Y.Doc, awarenes
   channel
     .on("broadcast", { event: "y-update" }, ({ payload }) => {
       const update = (payload as { update?: string })?.update;
-      if (update) Y.applyUpdate(ydoc, base64ToUint8Array(update), remoteOrigin);
+      if (update) runtime.Y.applyUpdate(ydoc, base64ToUint8Array(update), remoteOrigin);
     })
     .on("broadcast", { event: "awareness" }, ({ payload }) => {
       const update = (payload as { update?: string })?.update;
-      if (update) applyAwarenessUpdate(awareness, base64ToUint8Array(update), remoteOrigin);
+      if (update) runtime.applyAwarenessUpdate(awareness, base64ToUint8Array(update), remoteOrigin);
     })
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
@@ -2192,12 +2853,12 @@ function createDocumentRealtimeChannel(documentId: string, ydoc: Y.Doc, awarenes
     if (origin === remoteOrigin) return;
     const clients = added.concat(updated, removed);
     if (clients.length) {
-      const update = encodeAwarenessUpdate(awareness, clients);
+      const update = runtime.encodeAwarenessUpdate(awareness, clients);
       void channel.send({ type: "broadcast", event: "awareness", payload: { update: uint8ArrayToBase64(update) } });
     }
   });
 
-  const update = encodeAwarenessUpdate(awareness, [ydoc.clientID]);
+  const update = runtime.encodeAwarenessUpdate(awareness, [ydoc.clientID]);
   void channel.send({ type: "broadcast", event: "awareness", payload: { update: uint8ArrayToBase64(update) } });
   return channel;
 }
@@ -2222,7 +2883,7 @@ async function saveActiveDocumentVersion() {
     return;
   }
 
-  const snapshotUpdate = Y.encodeStateAsUpdate(documentCollab.ydoc);
+  const snapshotUpdate = documentCollab.runtime.Y.encodeStateAsUpdate(documentCollab.ydoc);
   const { data: snapshot } = await supabase!
     .from("document_crdt_snapshots")
     .insert({
@@ -2386,7 +3047,7 @@ function renderLineDiff(beforeMarkdown: string, afterMarkdown: string) {
   return rows.join("");
 }
 
-function renderPresence(awareness: Awareness) {
+function renderPresence(awareness: any) {
   const container = qs("[data-document-presence]");
   if (!container) return;
   const states = Array.from(awareness.getStates().values()) as Array<{ user?: { name?: string; color?: string } }>;
@@ -2458,13 +3119,14 @@ function decodeBytea(value: string | number[]) {
 }
 
 async function updateDocumentStatus(id: string, status: DocumentStatus) {
+  if (!confirmDocumentAction(status)) return;
   const approvedAt = status === "approved" ? new Date().toISOString() : null;
   const { error } = await supabase!
     .from("management_documents")
     .update({ status, updated_by: currentProfile!.id, approved_at: approvedAt })
     .eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
 
@@ -2477,6 +3139,7 @@ async function updateDocumentStatus(id: string, status: DocumentStatus) {
     });
   }
 
+  await recordActivity("management_document", id, status, `管理文書を${documentStatusLabels[status]}にしました。`);
   await renderDocumentsPage();
 }
 
@@ -2486,9 +3149,11 @@ async function approveDocumentStage(id: string) {
   const stage = documentStageForStatus(document.status);
   if (!stage) return;
   if (!canApproveDocumentStage(stage)) {
-    alert(`${documentStageLabels[stage]}承認の権限がありません。`);
+    showErrorToast(`${documentStageLabels[stage]}承認の権限がありません。`);
     return;
   }
+
+  if (!confirmDocumentAction("approved")) return;
 
   const nextStatus = nextDocumentStatusForStage(stage);
   const approvedAt = nextStatus === "approved" ? new Date().toISOString() : null;
@@ -2497,7 +3162,7 @@ async function approveDocumentStage(id: string) {
     .update({ status: nextStatus, updated_by: currentProfile!.id, approved_at: approvedAt })
     .eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
 
@@ -2510,6 +3175,7 @@ async function approveDocumentStage(id: string) {
   });
 
   await sealDocument(id, stage);
+  await recordActivity("management_document", id, "approved", `${documentStageLabels[stage]}承認しました。`);
   await renderDocumentsPage();
 }
 
@@ -2517,12 +3183,13 @@ async function rejectDocument(id: string) {
   const document = await loadDocumentForAction(id);
   if (!document) return;
   const stage = documentStageForStatus(document.status) ?? "board";
+  if (!confirmDocumentAction("rejected")) return;
   const { error } = await supabase!
     .from("management_documents")
     .update({ status: "rejected", updated_by: currentProfile!.id, approved_at: null })
     .eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
 
@@ -2534,13 +3201,14 @@ async function rejectDocument(id: string) {
     comment: `${documentStageLabels[stage]}段階で差戻しました。`,
   });
 
+  await recordActivity("management_document", id, "rejected", `${documentStageLabels[stage]}段階で差戻しました。`);
   await renderDocumentsPage();
 }
 
 async function loadDocumentForAction(id: string) {
   const { data, error } = await supabase!.from("management_documents").select("*").eq("id", id).single();
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return null;
   }
   return data as ManagementDocument;
@@ -2559,7 +3227,7 @@ async function sealDocument(id: string, stage: DocumentApprovalStage) {
     note,
   });
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
 }
@@ -2627,26 +3295,33 @@ async function initMaintenance() {
     });
   });
 
+  qs<HTMLInputElement>("[data-maintenance-search]")?.addEventListener("input", async (event) => {
+    maintenanceSearch = event.currentTarget.value;
+    await renderMaintenancePage();
+  });
+
   qs<HTMLFormElement>("[data-maintenance-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("maintenance_requests").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: request, error } = await supabase!.from("maintenance_requests").insert({
+      title,
       category: String(form.get("category")),
       priority: String(form.get("priority")),
       location: String(form.get("location")),
       description: String(form.get("description")),
       requester_id: currentProfile!.id,
       status: "open",
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-maintenance-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-maintenance-status]", "修繕依頼を受け付けました。");
+    await recordActivity("maintenance_request", request?.id ?? title, "created", `修繕依頼 ${title} を受け付けました。`);
     await renderMaintenancePage();
   });
 }
@@ -2660,18 +3335,33 @@ async function renderMaintenancePage() {
   if (maintenanceFilter !== "all") query = query.eq("status", maintenanceFilter);
 
   const { data } = await query;
-  const requests = (data ?? []) as MaintenanceRequest[];
+  const allRequests = (data ?? []) as MaintenanceRequest[];
+  const requests = canManage() ? allRequests : allRequests.filter((request) => request.requester_id === currentProfile?.id);
+  const visibleRequests = requests.filter((request) =>
+    includesSearch(
+      [
+        request.title,
+        request.location,
+        request.description,
+        request.handler_note,
+        maintenanceCategoryLabels[request.category],
+        maintenancePriorityLabels[request.priority],
+        maintenanceStatusLabels[request.status],
+      ],
+      maintenanceSearch,
+    ),
+  );
   setText("[data-metric='maintenance-open']", String(requests.filter((item) => item.status === "open").length));
   setText("[data-metric='maintenance-progress']", String(requests.filter((item) => item.status === "in_progress").length));
   setText("[data-metric='maintenance-done']", String(requests.filter((item) => item.status === "resolved" || item.status === "closed").length));
-  renderMaintenanceList(requests);
+  renderMaintenanceList(visibleRequests);
 }
 
 function renderMaintenanceList(requests: MaintenanceRequest[]) {
   const container = qs("[data-maintenance-list]");
   if (!container) return;
   if (!requests.length) {
-    container.innerHTML = `<p class="meta">修繕依頼はありません。</p>`;
+    container.innerHTML = `<p class="meta">${maintenanceSearch ? "検索条件に一致する修繕依頼はありません。" : "修繕依頼はありません。"}</p>`;
     return;
   }
 
@@ -2716,6 +3406,7 @@ function renderMaintenanceList(requests: MaintenanceRequest[]) {
 }
 
 async function updateMaintenanceStatus(id: string, status: MaintenanceStatus) {
+  if (!confirmMaintenanceAction(status)) return;
   const patch: Record<string, string | null> = { status };
   if (canManage()) {
     patch.handled_by = currentProfile!.id;
@@ -2726,9 +3417,10 @@ async function updateMaintenanceStatus(id: string, status: MaintenanceStatus) {
 
   const { error } = await supabase!.from("maintenance_requests").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("maintenance_request", id, status, `修繕依頼を${maintenanceStatusLabels[status]}にしました。`);
   await renderMaintenancePage();
 }
 
@@ -2748,20 +3440,28 @@ async function initFinance() {
     });
   });
 
+  qs<HTMLInputElement>("[data-finance-search]")?.addEventListener("input", async (event) => {
+    financeSearch = event.currentTarget.value;
+    await renderFinancePage();
+  });
+
   qs<HTMLFormElement>("[data-finance-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("finance_entries").insert({
-      title: String(form.get("title")),
-      entry_type: String(form.get("entry_type")),
+    const title = String(form.get("title"));
+    const entryType = String(form.get("entry_type")) as FinanceEntryType;
+    const amount = Number(form.get("amount") || 0);
+    const { data: entry, error } = await supabase!.from("finance_entries").insert({
+      title,
+      entry_type: entryType,
       category: String(form.get("category")),
-      amount: Number(form.get("amount") || 0),
+      amount,
       entry_date: String(form.get("entry_date")),
       note: String(form.get("note") || "") || null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-finance-status]", error.message, true);
       return;
@@ -2769,6 +3469,7 @@ async function initFinance() {
     formElement.reset();
     if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
     setStatus("[data-finance-status]", "台帳に記録しました。");
+    await recordActivity("finance_entry", entry?.id ?? title, "created", `収支台帳に${title} (${financeTypeLabels[entryType]} ${formatCurrency(amount)}) を記録しました。`);
     await renderFinancePage();
   });
 }
@@ -2784,19 +3485,33 @@ async function renderFinancePage() {
 
   const { data } = await query;
   const entries = (data ?? []) as FinanceEntry[];
+  const visibleEntries = entries.filter((entry) =>
+    includesSearch(
+      [
+        entry.title,
+        entry.category,
+        entry.note,
+        entry.entry_date,
+        entry.amount,
+        entry.profiles?.display_name,
+        financeTypeLabels[entry.entry_type],
+      ],
+      financeSearch,
+    ),
+  );
   const income = entries.filter((entry) => entry.entry_type === "income").reduce((sum, entry) => sum + entry.amount, 0);
   const expense = entries.filter((entry) => entry.entry_type === "expense").reduce((sum, entry) => sum + entry.amount, 0);
   setText("[data-metric='finance-income']", formatCurrency(income));
   setText("[data-metric='finance-expense']", formatCurrency(expense));
   setText("[data-metric='finance-balance']", formatCurrency(income - expense));
-  renderFinanceList(entries);
+  renderFinanceList(visibleEntries);
 }
 
 function renderFinanceList(entries: FinanceEntry[]) {
   const container = qs("[data-finance-list]");
   if (!container) return;
   if (!entries.length) {
-    container.innerHTML = `<p class="meta">台帳記録はありません。</p>`;
+    container.innerHTML = `<p class="meta">${financeSearch ? "検索条件に一致する台帳記録はありません。" : "台帳記録はありません。"}</p>`;
     return;
   }
   container.innerHTML = entries
@@ -2832,13 +3547,19 @@ async function initAssets() {
     });
   });
 
+  qs<HTMLInputElement>("[data-asset-search]")?.addEventListener("input", async (event) => {
+    assetSearch = event.currentTarget.value;
+    await renderAssetsPage();
+  });
+
   qs<HTMLFormElement>("[data-asset-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("asset_items").insert({
-      name: String(form.get("name")),
+    const name = String(form.get("name"));
+    const { data: asset, error } = await supabase!.from("asset_items").insert({
+      name,
       category: String(form.get("category")),
       status: String(form.get("status")),
       location: String(form.get("location")),
@@ -2846,13 +3567,14 @@ async function initAssets() {
       note: String(form.get("note") || "") || null,
       managed_by: currentProfile!.id,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-asset-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-asset-status]", "資産を登録しました。");
+    await recordActivity("asset_item", asset?.id ?? name, "created", `資産 ${name} を登録しました。`);
     await renderAssetsPage();
   });
 }
@@ -2862,19 +3584,32 @@ async function renderAssetsPage() {
   if (assetFilter !== "all") query = query.eq("status", assetFilter);
   const { data } = await query;
   const assets = (data ?? []) as AssetItem[];
+  const visibleAssets = assets.filter((asset) =>
+    includesSearch(
+      [
+        asset.name,
+        asset.location,
+        asset.note,
+        asset.inspection_due_at,
+        assetCategoryLabels[asset.category],
+        assetStatusLabels[asset.status],
+      ],
+      assetSearch,
+    ),
+  );
   const today = new Date().toISOString().slice(0, 10);
 
   setText("[data-metric='asset-total']", String(assets.length));
   setText("[data-metric='asset-due']", String(assets.filter((asset) => asset.inspection_due_at && asset.inspection_due_at <= today).length));
   setText("[data-metric='asset-attention']", String(assets.filter((asset) => asset.status === "repair_needed").length));
-  renderAssetList(assets);
+  renderAssetList(visibleAssets);
 }
 
 function renderAssetList(assets: AssetItem[]) {
   const container = qs("[data-asset-list]");
   if (!container) return;
   if (!assets.length) {
-    container.innerHTML = `<p class="meta">資産はありません。</p>`;
+    container.innerHTML = `<p class="meta">${assetSearch ? "検索条件に一致する資産はありません。" : "資産はありません。"}</p>`;
     return;
   }
   container.innerHTML = assets
@@ -2917,9 +3652,10 @@ function renderAssetList(assets: AssetItem[]) {
 async function updateAssetStatus(id: string, status: AssetStatus) {
   const { error } = await supabase!.from("asset_items").update({ status, managed_by: currentProfile!.id }).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("asset_item", id, status, `資産状態を${assetStatusLabels[status]}にしました。`);
   await renderAssetsPage();
 }
 
@@ -2928,26 +3664,38 @@ async function initVendors() {
   qs("[data-contract-form]")?.classList.toggle("hidden", !canManage());
   await renderVendorsPage();
 
+  qs<HTMLInputElement>("[data-vendor-search]")?.addEventListener("input", (event) => {
+    vendorSearch = event.currentTarget.value;
+    renderVendorList(vendorsCache);
+  });
+
+  qs<HTMLInputElement>("[data-contract-search]")?.addEventListener("input", (event) => {
+    contractSearch = event.currentTarget.value;
+    renderContractList(vendorContractsCache);
+  });
+
   qs<HTMLFormElement>("[data-vendor-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("vendors").insert({
-      name: String(form.get("name")),
+    const name = String(form.get("name"));
+    const { data: vendor, error } = await supabase!.from("vendors").insert({
+      name,
       category: String(form.get("category")),
       contact_name: String(form.get("contact_name") || "") || null,
       phone: String(form.get("phone") || "") || null,
       email: String(form.get("email") || "") || null,
       note: String(form.get("note") || "") || null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-vendor-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-vendor-status]", "業者を登録しました。");
+    await recordActivity("vendor", vendor?.id ?? name, "created", `業者 ${name} を登録しました。`);
     await renderVendorsPage();
   });
 
@@ -2957,21 +3705,24 @@ async function initVendors() {
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
     const endDate = String(form.get("end_date"));
-    const { error } = await supabase!.from("vendor_contracts").insert({
+    const title = String(form.get("title"));
+    const status = contractStatusFromEndDate(endDate);
+    const { data: contract, error } = await supabase!.from("vendor_contracts").insert({
       vendor_id: String(form.get("vendor_id")),
-      title: String(form.get("title")),
+      title,
       start_date: String(form.get("start_date")),
       end_date: endDate,
       amount: form.get("amount") ? Number(form.get("amount")) : null,
-      status: contractStatusFromEndDate(endDate),
+      status,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-contract-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-contract-status]", "契約を保存しました。");
+    await recordActivity("vendor_contract", contract?.id ?? title, "created", `契約 ${title} を保存しました。状態: ${contractStatusLabels[status]}`);
     await renderVendorsPage();
   });
 }
@@ -2982,13 +3733,13 @@ async function renderVendorsPage() {
     supabase!.from("vendor_contracts").select("*, vendors(name)").order("end_date", { ascending: true }),
   ]);
   vendorsCache = (vendors ?? []) as Vendor[];
-  const contractItems = (contracts ?? []) as VendorContract[];
+  vendorContractsCache = (contracts ?? []) as VendorContract[];
   setText("[data-metric='vendor-total']", String(vendorsCache.length));
-  setText("[data-metric='contract-active']", String(contractItems.filter((contract) => contract.status === "active").length));
-  setText("[data-metric='contract-renewal']", String(contractItems.filter((contract) => contract.status === "renewal_due").length));
+  setText("[data-metric='contract-active']", String(vendorContractsCache.filter((contract) => contract.status === "active").length));
+  setText("[data-metric='contract-renewal']", String(vendorContractsCache.filter((contract) => contract.status === "renewal_due").length));
   renderVendorSelect();
   renderVendorList(vendorsCache);
-  renderContractList(contractItems);
+  renderContractList(vendorContractsCache);
 }
 
 function renderVendorSelect() {
@@ -3000,11 +3751,17 @@ function renderVendorSelect() {
 function renderVendorList(vendors: Vendor[]) {
   const container = qs("[data-vendor-list]");
   if (!container) return;
-  if (!vendors.length) {
-    container.innerHTML = `<p class="meta">業者はありません。</p>`;
+  const visibleVendors = vendors.filter((vendor) =>
+    includesSearch(
+      [vendor.name, vendor.category, vendor.contact_name, vendor.phone, vendor.email, vendor.note, vendor.is_active ? "有効" : "停止"],
+      vendorSearch,
+    ),
+  );
+  if (!visibleVendors.length) {
+    container.innerHTML = `<p class="meta">${vendorSearch ? "検索条件に一致する業者はありません。" : "業者はありません。"}</p>`;
     return;
   }
-  container.innerHTML = vendors
+  container.innerHTML = visibleVendors
     .map(
       (vendor) => `
         <article class="list-item">
@@ -3026,11 +3783,24 @@ function renderVendorList(vendors: Vendor[]) {
 function renderContractList(contracts: VendorContract[]) {
   const container = qs("[data-contract-list]");
   if (!container) return;
-  if (!contracts.length) {
-    container.innerHTML = `<p class="meta">契約はありません。</p>`;
+  const visibleContracts = contracts.filter((contract) =>
+    includesSearch(
+      [
+        contract.title,
+        contract.vendors?.name,
+        contractStatusLabels[contract.status],
+        contract.start_date,
+        contract.end_date,
+        contract.amount,
+      ],
+      contractSearch,
+    ),
+  );
+  if (!visibleContracts.length) {
+    container.innerHTML = `<p class="meta">${contractSearch ? "検索条件に一致する契約はありません。" : "契約はありません。"}</p>`;
     return;
   }
-  container.innerHTML = contracts
+  container.innerHTML = visibleContracts
     .map(
       (contract) => `
         <article class="list-item">
@@ -3089,6 +3859,7 @@ async function initResidents() {
     currentProfile = data as Profile;
     setText("[data-user-name]", currentProfile.display_name || "ユーザー");
     setStatus("[data-resident-status]", "連絡先を更新しました。");
+    await recordActivity("profile", currentProfile.id, "updated", "住民名簿の連絡先を更新しました。");
     await renderResidentsPage();
   });
 }
@@ -3166,19 +3937,21 @@ async function initSurveys() {
     }
 
     const closesAt = String(form.get("closes_at") || "");
-    const { error } = await supabase!.from("surveys").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: survey, error } = await supabase!.from("surveys").insert({
+      title,
       question: String(form.get("question")),
       options,
       closes_at: closesAt ? new Date(closesAt).toISOString() : null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-survey-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-survey-status]", "意見募集を作成しました。");
+    await recordActivity("survey", survey?.id ?? title, "created", `意見募集 ${title} を作成しました。`);
     await renderSurveysPage();
   });
 }
@@ -3256,18 +4029,20 @@ async function answerSurvey(surveyId: string, optionValue: string) {
     { onConflict: "survey_id,user_id" },
   );
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
   await renderSurveysPage();
 }
 
 async function closeSurvey(id: string) {
+  if (!confirmSurveyAction()) return;
   const { error } = await supabase!.from("surveys").update({ is_open: false }).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("survey", id, "closed", "意見募集を締切りました。");
   await renderSurveysPage();
 }
 
@@ -3284,21 +4059,23 @@ async function initSafety() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("safety_events").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: safetyEvent, error } = await supabase!.from("safety_events").insert({
+      title,
       kind: String(form.get("kind")),
       status: String(form.get("status")),
       scheduled_at: new Date(String(form.get("scheduled_at"))).toISOString(),
       location: String(form.get("location") || "") || null,
       note: String(form.get("note") || "") || null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-safety-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-safety-status]", "防災・安否イベントを登録しました。");
+    await recordActivity("safety_event", safetyEvent?.id ?? title, "created", `防災・安否イベント ${title} を登録しました。`);
     await renderSafetyPage();
   });
 }
@@ -3371,18 +4148,20 @@ async function respondSafety(eventId: string, status: SafetyCheckinStatus) {
     { onConflict: "event_id,user_id" },
   );
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
   await renderSafetyPage();
 }
 
 async function updateSafetyEventStatus(id: string, status: SafetyEventStatus) {
+  if (!confirmSafetyAction(status)) return;
   const { error } = await supabase!.from("safety_events").update({ status }).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("safety_event", id, status, `防災・安否イベントを${safetyEventStatusLabels[status]}にしました。`);
   await renderSafetyPage();
 }
 
@@ -3404,21 +4183,23 @@ async function initTasks() {
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
     const assignee = String(form.get("assignee_id") || "").trim();
-    const { error } = await supabase!.from("board_tasks").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: task, error } = await supabase!.from("board_tasks").insert({
+      title,
       description: String(form.get("description")),
       priority: String(form.get("priority")),
       due_date: String(form.get("due_date") || "") || null,
       assignee_id: assignee || currentProfile!.id,
       created_by: currentProfile!.id,
       status: "open",
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-task-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-task-status]", "タスクを作成しました。");
+    await recordActivity("board_task", task?.id ?? title, "created", `理事会タスク ${title} を作成しました。`);
     await renderTasksPage();
   });
 }
@@ -3480,12 +4261,14 @@ function renderTaskList(tasks: BoardTask[]) {
 }
 
 async function updateTaskStatus(id: string, status: BoardTaskStatus) {
+  if (!confirmTaskAction(status)) return;
   const patch: Record<string, string | null> = { status, completed_at: status === "done" ? new Date().toISOString() : null };
   const { error } = await supabase!.from("board_tasks").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("board_task", id, status, `理事会タスクを${boardTaskStatusLabels[status]}にしました。`);
   await renderTasksPage();
 }
 
@@ -3493,24 +4276,36 @@ async function initParking() {
   qs("[data-parking-space-form]")?.classList.toggle("hidden", !canManage());
   await renderParkingPage();
 
+  qs<HTMLInputElement>("[data-parking-space-search]")?.addEventListener("input", (event) => {
+    parkingSpaceSearch = event.currentTarget.value;
+    renderParkingSpaces(parkingSpacesCache);
+  });
+
+  qs<HTMLInputElement>("[data-parking-permit-search]")?.addEventListener("input", async (event) => {
+    parkingPermitSearch = event.currentTarget.value;
+    await renderParkingPage();
+  });
+
   qs<HTMLFormElement>("[data-parking-space-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("parking_spaces").insert({
-      code: String(form.get("code")),
+    const code = String(form.get("code"));
+    const { data: space, error } = await supabase!.from("parking_spaces").insert({
+      code,
       kind: String(form.get("kind")),
       location: String(form.get("location") || "") || null,
       monthly_fee: form.get("monthly_fee") ? Number(form.get("monthly_fee")) : null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-parking-space-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-parking-space-status]", "区画を登録しました。");
+    await recordActivity("parking_space", space?.id ?? code, "created", `駐車・駐輪区画 ${code} を登録しました。`);
     await renderParkingPage();
   });
 
@@ -3519,20 +4314,22 @@ async function initParking() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("parking_permits").insert({
+    const vehicleLabel = String(form.get("vehicle_label"));
+    const { data: permit, error } = await supabase!.from("parking_permits").insert({
       space_id: String(form.get("space_id")),
       user_id: currentProfile!.id,
-      vehicle_label: String(form.get("vehicle_label")),
+      vehicle_label: vehicleLabel,
       start_date: String(form.get("start_date")),
       end_date: String(form.get("end_date") || "") || null,
       status: "pending",
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-parking-permit-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-parking-permit-status]", "利用申請を送信しました。");
+    await recordActivity("parking_permit", permit?.id ?? vehicleLabel, "created", `駐車・駐輪利用 ${vehicleLabel} を申請しました。`);
     await renderParkingPage();
   });
 }
@@ -3543,7 +4340,8 @@ async function renderParkingPage() {
     supabase!.from("parking_permits").select("*, parking_spaces(code, kind, location)").order("created_at", { ascending: false }),
   ]);
   parkingSpacesCache = (spaces ?? []) as ParkingSpace[];
-  const parkingPermits = (permits ?? []) as ParkingPermit[];
+  const allParkingPermits = (permits ?? []) as ParkingPermit[];
+  const parkingPermits = canManage() ? allParkingPermits : allParkingPermits.filter((permit) => permit.user_id === currentProfile?.id);
   const availableSpaces = parkingSpacesCache.filter((space) => space.is_active && space.is_available);
   setText("[data-metric='parking-available']", String(availableSpaces.length));
   setText("[data-metric='parking-active']", String(parkingSpacesCache.filter((space) => space.is_active && !space.is_available).length));
@@ -3567,11 +4365,14 @@ function renderParkingSpaceSelect(spaces: ParkingSpace[]) {
 function renderParkingSpaces(spaces: ParkingSpace[]) {
   const container = qs("[data-parking-space-list]");
   if (!container) return;
-  if (!spaces.length) {
-    container.innerHTML = `<p class="meta">区画はありません。</p>`;
+  const visibleSpaces = spaces.filter((space) =>
+    includesSearch([space.code, space.location, parkingKindLabels[space.kind], space.monthly_fee], parkingSpaceSearch),
+  );
+  if (!visibleSpaces.length) {
+    container.innerHTML = `<p class="meta">${parkingSpaceSearch ? "検索条件に一致する区画はありません。" : "区画はありません。"}</p>`;
     return;
   }
-  container.innerHTML = spaces
+  container.innerHTML = visibleSpaces
     .map(
       (space) => `
         <article class="list-item">
@@ -3591,11 +4392,25 @@ function renderParkingSpaces(spaces: ParkingSpace[]) {
 function renderParkingPermits(permits: ParkingPermit[]) {
   const container = qs("[data-parking-permit-list]");
   if (!container) return;
-  if (!permits.length) {
-    container.innerHTML = `<p class="meta">利用申請はありません。</p>`;
+  const visiblePermits = permits.filter((permit) =>
+    includesSearch(
+      [
+        permit.vehicle_label,
+        permit.parking_spaces?.code,
+        permit.parking_spaces?.location,
+        parkingKindLabels[permit.parking_spaces?.kind ?? "car"],
+        parkingPermitStatusLabels[permit.status],
+        permit.start_date,
+        permit.end_date,
+      ],
+      parkingPermitSearch,
+    ),
+  );
+  if (!visiblePermits.length) {
+    container.innerHTML = `<p class="meta">${parkingPermitSearch ? "検索条件に一致する利用申請はありません。" : "利用申請はありません。"}</p>`;
     return;
   }
-  container.innerHTML = permits
+  container.innerHTML = visiblePermits
     .map(
       (permit) => `
         <article class="list-item">
@@ -3633,9 +4448,10 @@ function renderParkingPermits(permits: ParkingPermit[]) {
 }
 
 async function updateParkingPermitStatus(id: string, status: ParkingPermitStatus) {
+  if (!confirmParkingAction(status)) return;
   const { data: permit, error: permitError } = await supabase!.from("parking_permits").select("space_id").eq("id", id).single();
   if (permitError || !permit) {
-    alert(permitError?.message ?? "申請を確認できませんでした。");
+    showErrorToast(permitError?.message ?? "申請を確認できませんでした。");
     return;
   }
   const patch: Record<string, string | null> = { status };
@@ -3645,9 +4461,10 @@ async function updateParkingPermitStatus(id: string, status: ParkingPermitStatus
   }
   const { error } = await supabase!.from("parking_permits").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("parking_permit", id, status, `駐車・駐輪申請を${parkingPermitStatusLabels[status]}にしました。`);
   const { data: activePermits } = await supabase!.from("parking_permits").select("id").eq("space_id", permit.space_id).eq("status", "active").limit(1);
   await supabase!.from("parking_spaces").update({ is_available: !(activePermits ?? []).length }).eq("id", permit.space_id);
   await renderParkingPage();
@@ -3664,25 +4481,32 @@ async function initResidentRequests() {
     });
   });
 
+  qs<HTMLInputElement>("[data-request-search]")?.addEventListener("input", async (event) => {
+    residentRequestSearch = event.currentTarget.value;
+    await renderResidentRequestsPage();
+  });
+
   qs<HTMLFormElement>("[data-resident-request-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("resident_requests").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: request, error } = await supabase!.from("resident_requests").insert({
+      title,
       category: String(form.get("category")),
       visibility: String(form.get("visibility")),
       body: String(form.get("body")),
       requester_id: currentProfile!.id,
       status: "open",
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-resident-request-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-resident-request-status]", "相談を送信しました。");
+    await recordActivity("resident_request", request?.id ?? title, "created", `住民相談 ${title} を送信しました。`);
     await renderResidentRequestsPage();
   });
 }
@@ -3691,18 +4515,34 @@ async function renderResidentRequestsPage() {
   let query = supabase!.from("resident_requests").select("*").order("updated_at", { ascending: false });
   if (residentRequestFilter !== "all") query = query.eq("status", residentRequestFilter);
   const { data } = await query;
-  const requests = (data ?? []) as ResidentRequest[];
+  const allRequests = (data ?? []) as ResidentRequest[];
+  const requests = canManage()
+    ? allRequests
+    : allRequests.filter((request) => request.requester_id === currentProfile?.id || request.visibility === "public");
+  const visibleRequests = requests.filter((request) =>
+    includesSearch(
+      [
+        request.title,
+        request.body,
+        request.response,
+        residentRequestCategoryLabels[request.category],
+        residentRequestStatusLabels[request.status],
+        residentRequestVisibilityLabels[request.visibility],
+      ],
+      residentRequestSearch,
+    ),
+  );
   setText("[data-metric='request-open']", String(requests.filter((request) => request.status === "open").length));
   setText("[data-metric='request-progress']", String(requests.filter((request) => request.status === "in_progress").length));
   setText("[data-metric='request-done']", String(requests.filter((request) => request.status === "resolved" || request.status === "closed").length));
-  renderResidentRequestList(requests);
+  renderResidentRequestList(visibleRequests);
 }
 
 function renderResidentRequestList(requests: ResidentRequest[]) {
   const container = qs("[data-resident-request-list]");
   if (!container) return;
   if (!requests.length) {
-    container.innerHTML = `<p class="meta">相談・苦情はありません。</p>`;
+    container.innerHTML = `<p class="meta">${residentRequestSearch ? "検索条件に一致する相談・苦情はありません。" : "相談・苦情はありません。"}</p>`;
     return;
   }
   container.innerHTML = requests
@@ -3746,6 +4586,7 @@ function renderResidentRequestList(requests: ResidentRequest[]) {
 }
 
 async function updateResidentRequestStatus(id: string, status: ResidentRequestStatus) {
+  if (!confirmResidentRequestAction(status)) return;
   const patch: Record<string, string | null> = { status };
   if (canManage()) {
     patch.handled_by = currentProfile!.id;
@@ -3754,9 +4595,10 @@ async function updateResidentRequestStatus(id: string, status: ResidentRequestSt
   if (status === "resolved") patch.resolved_at = new Date().toISOString();
   const { error } = await supabase!.from("resident_requests").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("resident_request", id, status, `住民相談を${residentRequestStatusLabels[status]}にしました。`);
   await renderResidentRequestsPage();
 }
 
@@ -3764,26 +4606,38 @@ async function initCirculars() {
   qs("[data-circular-form]")?.classList.toggle("hidden", !canManage());
   await renderCircularsPage();
 
+  qs<HTMLInputElement>("[data-circular-search]")?.addEventListener("input", async (event) => {
+    circularSearch = event.currentTarget.value;
+    await renderCircularsPage();
+  });
+
+  qs<HTMLInputElement>("[data-circular-ack-search]")?.addEventListener("input", async (event) => {
+    circularAckSearch = event.currentTarget.value;
+    await renderCircularsPage();
+  });
+
   qs<HTMLFormElement>("[data-circular-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("circulars").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: circular, error } = await supabase!.from("circulars").insert({
+      title,
       kind: String(form.get("kind")),
       target_role: String(form.get("target_role")),
       due_date: String(form.get("due_date") || "") || null,
       body: String(form.get("body")),
       status: "published",
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-circular-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-circular-status]", "回覧を公開しました。");
+    await recordActivity("circular", circular?.id ?? title, "created", `回覧 ${title} を公開しました。`);
     await renderCircularsPage();
   });
 }
@@ -3791,25 +4645,49 @@ async function initCirculars() {
 async function renderCircularsPage() {
   const [{ data: circulars }, { data: acknowledgements }] = await Promise.all([
     supabase!.from("circulars").select("*").order("updated_at", { ascending: false }),
-    supabase!.from("circular_acknowledgements").select("*, circulars(title, kind)").order("created_at", { ascending: false }),
+    supabase!.from("circular_acknowledgements").select("*, circulars(title, kind, target_role)").order("created_at", { ascending: false }),
   ]);
-  const circularItems = (circulars ?? []) as Circular[];
+  const circularItems = ((circulars ?? []) as Circular[]).filter(isTargetedToCurrentRole);
   const ackItems = (acknowledgements ?? []) as CircularAcknowledgement[];
   const acknowledgedIds = new Set(ackItems.filter((ack) => ack.user_id === currentProfile?.id).map((ack) => ack.circular_id));
   const today = new Date().toISOString().slice(0, 10);
   const dueLimit = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const visibleCirculars = circularItems.filter((item) =>
+    includesSearch(
+      [
+        item.title,
+        item.body,
+        item.due_date,
+        circularKindLabels[item.kind],
+        item.target_role === "all" ? "全員" : roleLabels[item.target_role as Role],
+        circularStatusLabels[item.status],
+      ],
+      circularSearch,
+    ),
+  );
+  const visibleAcks = ackItems.filter((ack) =>
+    includesSearch(
+      [
+        ack.circulars?.title,
+        ack.circulars?.kind ? circularKindLabels[ack.circulars.kind] : null,
+        ack.circulars?.target_role === "all" ? "全員" : ack.circulars?.target_role ? roleLabels[ack.circulars.target_role as Role] : null,
+        ack.note,
+      ],
+      circularAckSearch,
+    ),
+  );
   setText("[data-metric='circular-published']", String(circularItems.filter((item) => item.status === "published").length));
   setText("[data-metric='circular-unread']", String(circularItems.filter((item) => item.status === "published" && !acknowledgedIds.has(item.id)).length));
   setText("[data-metric='circular-due']", String(circularItems.filter((item) => item.status === "published" && item.due_date && item.due_date >= today && item.due_date <= dueLimit).length));
-  renderCircularList(circularItems, acknowledgedIds);
-  renderCircularAckList(ackItems);
+  renderCircularList(visibleCirculars, acknowledgedIds);
+  renderCircularAckList(visibleAcks);
 }
 
 function renderCircularList(circulars: Circular[], acknowledgedIds: Set<string>) {
   const container = qs("[data-circular-list]");
   if (!container) return;
   if (!circulars.length) {
-    container.innerHTML = `<p class="meta">回覧はありません。</p>`;
+    container.innerHTML = `<p class="meta">${circularSearch ? "検索条件に一致する回覧はありません。" : "回覧はありません。"}</p>`;
     return;
   }
   container.innerHTML = circulars
@@ -3847,9 +4725,9 @@ function renderCircularList(circulars: Circular[], acknowledgedIds: Set<string>)
 function renderCircularAckList(acknowledgements: CircularAcknowledgement[]) {
   const container = qs("[data-circular-ack-list]");
   if (!container) return;
-  const ownAcks = acknowledgements.filter((ack) => ack.user_id === currentProfile?.id);
+  const ownAcks = acknowledgements.filter((ack) => ack.user_id === currentProfile?.id && (!ack.circulars || isTargetedToCurrentRole(ack.circulars as Pick<Circular, "target_role">)));
   if (!ownAcks.length) {
-    container.innerHTML = `<p class="meta">確認履歴はありません。</p>`;
+    container.innerHTML = `<p class="meta">${circularAckSearch ? "検索条件に一致する確認履歴はありません。" : "確認履歴はありません。"}</p>`;
     return;
   }
   container.innerHTML = ownAcks
@@ -3873,18 +4751,20 @@ async function acknowledgeCircular(id: string) {
     { onConflict: "circular_id,user_id", ignoreDuplicates: true },
   );
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
   await renderCircularsPage();
 }
 
 async function updateCircularStatus(id: string, status: CircularStatus) {
+  if (!confirmCircularAction(status)) return;
   const { error } = await supabase!.from("circulars").update({ status }).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("circular", id, status, `回覧を${circularStatusLabels[status]}にしました。`);
   await renderCircularsPage();
 }
 
@@ -3892,24 +4772,36 @@ async function initLending() {
   qs("[data-lending-item-form]")?.classList.toggle("hidden", !canManage());
   await renderLendingPage();
 
+  qs<HTMLInputElement>("[data-lending-item-search]")?.addEventListener("input", async (event) => {
+    lendingItemSearch = event.currentTarget.value;
+    await renderLendingPage();
+  });
+
+  qs<HTMLInputElement>("[data-lending-request-search]")?.addEventListener("input", async (event) => {
+    lendingRequestSearch = event.currentTarget.value;
+    await renderLendingPage();
+  });
+
   qs<HTMLFormElement>("[data-lending-item-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("lending_items").insert({
-      name: String(form.get("name")),
+    const name = String(form.get("name"));
+    const { data: item, error } = await supabase!.from("lending_items").insert({
+      name,
       kind: String(form.get("kind")),
       location: String(form.get("location") || "") || null,
       note: String(form.get("note") || "") || null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-lending-item-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-lending-item-status]", "貸出品を登録しました。");
+    await recordActivity("lending_item", item?.id ?? name, "created", `貸出品 ${name} を登録しました。`);
     await renderLendingPage();
   });
 
@@ -3918,19 +4810,21 @@ async function initLending() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("lending_requests").insert({
+    const purpose = String(form.get("purpose"));
+    const { data: request, error } = await supabase!.from("lending_requests").insert({
       item_id: String(form.get("item_id")),
       user_id: currentProfile!.id,
-      purpose: String(form.get("purpose")),
+      purpose,
       due_at: form.get("due_at") ? new Date(String(form.get("due_at"))).toISOString() : null,
       status: "pending",
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-lending-request-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-lending-request-status]", "貸出申請を送信しました。");
+    await recordActivity("lending_request", request?.id ?? purpose, "created", `貸出申請 ${purpose} を送信しました。`);
     await renderLendingPage();
   });
 }
@@ -3941,14 +4835,35 @@ async function renderLendingPage() {
     supabase!.from("lending_requests").select("*, lending_items(name, kind, location)").order("created_at", { ascending: false }),
   ]);
   lendingItemsCache = (items ?? []) as LendingItem[];
-  const lendingRequests = (requests ?? []) as LendingRequest[];
+  const allLendingRequests = (requests ?? []) as LendingRequest[];
+  const lendingRequests = canManage() ? allLendingRequests : allLendingRequests.filter((request) => request.user_id === currentProfile?.id);
   const availableItems = lendingItemsCache.filter((item) => item.is_active && item.is_available);
+  const visibleItems = lendingItemsCache.filter((item) =>
+    includesSearch(
+      [item.name, item.location, item.note, lendingKindLabels[item.kind], item.is_available ? "貸出可" : "貸出中"],
+      lendingItemSearch,
+    ),
+  );
+  const visibleRequests = lendingRequests.filter((request) =>
+    includesSearch(
+      [
+        request.purpose,
+        request.lending_items?.name,
+        request.lending_items?.location,
+        request.due_at,
+        request.checkout_at,
+        lendingRequestStatusLabels[request.status],
+        request.lending_items?.kind ? lendingKindLabels[request.lending_items.kind] : null,
+      ],
+      lendingRequestSearch,
+    ),
+  );
   setText("[data-metric='lending-available']", String(availableItems.length));
   setText("[data-metric='lending-pending']", String(lendingRequests.filter((request) => request.status === "pending").length));
   setText("[data-metric='lending-checked-out']", String(lendingRequests.filter((request) => request.status === "checked_out").length));
   renderLendingItemSelect(availableItems);
-  renderLendingItems(lendingItemsCache);
-  renderLendingRequests(lendingRequests);
+  renderLendingItems(visibleItems);
+  renderLendingRequests(visibleRequests);
 }
 
 function renderLendingItemSelect(items: LendingItem[]) {
@@ -3966,7 +4881,7 @@ function renderLendingItems(items: LendingItem[]) {
   const container = qs("[data-lending-item-list]");
   if (!container) return;
   if (!items.length) {
-    container.innerHTML = `<p class="meta">貸出品はありません。</p>`;
+    container.innerHTML = `<p class="meta">${lendingItemSearch ? "検索条件に一致する貸出品はありません。" : "貸出品はありません。"}</p>`;
     return;
   }
   container.innerHTML = items
@@ -3991,7 +4906,7 @@ function renderLendingRequests(requests: LendingRequest[]) {
   const container = qs("[data-lending-request-list]");
   if (!container) return;
   if (!requests.length) {
-    container.innerHTML = `<p class="meta">貸出申請はありません。</p>`;
+    container.innerHTML = `<p class="meta">${lendingRequestSearch ? "検索条件に一致する貸出申請はありません。" : "貸出申請はありません。"}</p>`;
     return;
   }
   container.innerHTML = requests
@@ -4039,9 +4954,10 @@ function renderLendingRequests(requests: LendingRequest[]) {
 }
 
 async function updateLendingRequestStatus(id: string, status: LendingRequestStatus) {
+  if (!confirmLendingAction(status)) return;
   const { data: request, error: requestError } = await supabase!.from("lending_requests").select("item_id").eq("id", id).single();
   if (requestError || !request) {
-    alert(requestError?.message ?? "貸出申請を確認できませんでした。");
+    showErrorToast(requestError?.message ?? "貸出申請を確認できませんでした。");
     return;
   }
   const patch: Record<string, string | null> = { status };
@@ -4052,12 +4968,13 @@ async function updateLendingRequestStatus(id: string, status: LendingRequestStat
   if (status === "returned") patch.returned_at = new Date().toISOString();
   const { error } = await supabase!.from("lending_requests").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
   if (status === "checked_out" || status === "returned") {
     await supabase!.from("lending_items").update({ is_available: status === "returned" }).eq("id", request.item_id);
   }
+  await recordActivity("lending_request", id, status, `貸出申請を${lendingRequestStatusLabels[status]}にしました。`);
   await renderLendingPage();
 }
 
@@ -4073,14 +4990,25 @@ async function initDuties() {
     });
   });
 
+  qs<HTMLInputElement>("[data-duty-search]")?.addEventListener("input", async (event) => {
+    dutySearch = event.currentTarget.value;
+    await renderDutiesPage();
+  });
+
+  qs<HTMLInputElement>("[data-duty-own-search]")?.addEventListener("input", async (event) => {
+    ownDutySearch = event.currentTarget.value;
+    await renderDutiesPage();
+  });
+
   qs<HTMLFormElement>("[data-duty-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
     const assignee = String(form.get("assignee_id") || "").trim();
-    const { error } = await supabase!.from("duty_assignments").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: duty, error } = await supabase!.from("duty_assignments").insert({
+      title,
       kind: String(form.get("kind")),
       assignee_id: assignee || currentProfile!.id,
       scheduled_date: String(form.get("scheduled_date")),
@@ -4088,27 +5016,57 @@ async function initDuties() {
       note: String(form.get("note") || "") || null,
       status: "planned",
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-duty-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-duty-status]", "当番を作成しました。");
+    await recordActivity("duty_assignment", duty?.id ?? title, "created", `当番 ${title} を作成しました。`);
     await renderDutiesPage();
   });
 }
 
 async function renderDutiesPage() {
   const { data } = await supabase!.from("duty_assignments").select("*").order("scheduled_date", { ascending: true }).order("created_at", { ascending: false });
-  const duties = (data ?? []) as DutyAssignment[];
+  const allDuties = (data ?? []) as DutyAssignment[];
+  const duties = canManage() ? allDuties : allDuties.filter((duty) => duty.assignee_id === currentProfile?.id);
   const today = new Date().toISOString().slice(0, 10);
   const shownDuties = dutyFilter === "all" ? duties : duties.filter((duty) => duty.status === dutyFilter);
+  const visibleDuties = shownDuties.filter((duty) =>
+    includesSearch(
+      [
+        duty.title,
+        dutyKindLabels[duty.kind],
+        duty.scheduled_date,
+        duty.location,
+        duty.note,
+        dutyStatusLabels[duty.status],
+      ],
+      dutySearch,
+    ),
+  );
+  const visibleOwnDuties = duties
+    .filter((duty) => duty.assignee_id === currentProfile?.id)
+    .filter((duty) =>
+      includesSearch(
+        [
+          duty.title,
+          dutyKindLabels[duty.kind],
+          duty.scheduled_date,
+          duty.location,
+          duty.note,
+          dutyStatusLabels[duty.status],
+        ],
+        ownDutySearch,
+      ),
+    );
   setText("[data-metric='duty-planned']", String(duties.filter((duty) => duty.status === "planned").length));
   setText("[data-metric='duty-today']", String(duties.filter((duty) => duty.status === "planned" && duty.scheduled_date === today).length));
   setText("[data-metric='duty-done']", String(duties.filter((duty) => duty.status === "done").length));
-  renderDutyList(shownDuties);
-  renderOwnDutyList(duties.filter((duty) => duty.assignee_id === currentProfile?.id));
+  renderDutyList(visibleDuties);
+  renderOwnDutyList(visibleOwnDuties);
   bindDutyActions();
 }
 
@@ -4116,7 +5074,7 @@ function renderDutyList(duties: DutyAssignment[]) {
   const container = qs("[data-duty-list]");
   if (!container) return;
   if (!duties.length) {
-    container.innerHTML = `<p class="meta">当番はありません。</p>`;
+    container.innerHTML = `<p class="meta">${dutySearch ? "検索条件に一致する当番はありません。" : "当番はありません。"}</p>`;
     return;
   }
   container.innerHTML = duties.map(renderDutyItem).join("");
@@ -4126,7 +5084,7 @@ function renderOwnDutyList(duties: DutyAssignment[]) {
   const container = qs("[data-duty-own-list]");
   if (!container) return;
   if (!duties.length) {
-    container.innerHTML = `<p class="meta">自分の当番はありません。</p>`;
+    container.innerHTML = `<p class="meta">${ownDutySearch ? "検索条件に一致する当番はありません。" : "自分の当番はありません。"}</p>`;
     return;
   }
   container.innerHTML = duties.map(renderDutyItem).join("");
@@ -4168,12 +5126,14 @@ function bindDutyActions() {
 }
 
 async function updateDutyStatus(id: string, status: DutyStatus) {
+  if (!confirmDutyAction(status)) return;
   const patch: Record<string, string | null> = { status, completed_at: status === "done" ? new Date().toISOString() : null };
   const { error } = await supabase!.from("duty_assignments").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("duty_assignment", id, status, `当番を${dutyStatusLabels[status]}にしました。`);
   await renderDutiesPage();
 }
 
@@ -4181,25 +5141,37 @@ async function initWaste() {
   qs("[data-waste-schedule-form]")?.classList.toggle("hidden", !canManage());
   await renderWastePage();
 
+  qs<HTMLInputElement>("[data-waste-schedule-search]")?.addEventListener("input", async (event) => {
+    wasteScheduleSearch = event.currentTarget.value;
+    await renderWastePage();
+  });
+
+  qs<HTMLInputElement>("[data-bulky-request-search]")?.addEventListener("input", async (event) => {
+    bulkyRequestSearch = event.currentTarget.value;
+    await renderWastePage();
+  });
+
   qs<HTMLFormElement>("[data-waste-schedule-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("waste_schedules").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: schedule, error } = await supabase!.from("waste_schedules").insert({
+      title,
       category: String(form.get("category")),
       collection_day: String(form.get("collection_day")),
       location: String(form.get("location") || "") || null,
       note: String(form.get("note") || "") || null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-waste-schedule-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-waste-schedule-status]", "収集ルールを登録しました。");
+    await recordActivity("waste_schedule", schedule?.id ?? title, "created", `ごみ収集ルール ${title} を登録しました。`);
     await renderWastePage();
   });
 
@@ -4208,20 +5180,22 @@ async function initWaste() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("bulky_waste_requests").insert({
+    const itemName = String(form.get("item_name"));
+    const { data: request, error } = await supabase!.from("bulky_waste_requests").insert({
       user_id: currentProfile!.id,
-      item_name: String(form.get("item_name")),
+      item_name: itemName,
       preferred_date: String(form.get("preferred_date") || "") || null,
       pickup_location: String(form.get("pickup_location") || "") || null,
       note: String(form.get("note") || "") || null,
       status: "submitted",
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-bulky-request-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-bulky-request-status]", "粗大ごみ申請を送信しました。");
+    await recordActivity("bulky_waste_request", request?.id ?? itemName, "created", `粗大ごみ申請 ${itemName} を送信しました。`);
     await renderWastePage();
   });
 }
@@ -4232,19 +5206,45 @@ async function renderWastePage() {
     supabase!.from("bulky_waste_requests").select("*").order("created_at", { ascending: false }),
   ]);
   const wasteSchedules = (schedules ?? []) as WasteSchedule[];
-  const bulkyRequests = (requests ?? []) as BulkyWasteRequest[];
+  const allBulkyRequests = (requests ?? []) as BulkyWasteRequest[];
+  const bulkyRequests = canManage() ? allBulkyRequests : allBulkyRequests.filter((request) => request.user_id === currentProfile?.id);
+  const visibleSchedules = wasteSchedules.filter((schedule) =>
+    includesSearch(
+      [
+        schedule.title,
+        schedule.collection_day,
+        schedule.location,
+        schedule.note,
+        wasteCategoryLabels[schedule.category],
+        schedule.is_active ? "有効" : "停止",
+      ],
+      wasteScheduleSearch,
+    ),
+  );
+  const visibleBulkyRequests = bulkyRequests.filter((request) =>
+    includesSearch(
+      [
+        request.item_name,
+        request.preferred_date,
+        request.pickup_location,
+        request.note,
+        bulkyWasteStatusLabels[request.status],
+      ],
+      bulkyRequestSearch,
+    ),
+  );
   setText("[data-metric='waste-schedules']", String(wasteSchedules.filter((schedule) => schedule.is_active).length));
   setText("[data-metric='bulky-submitted']", String(bulkyRequests.filter((request) => request.status === "submitted").length));
   setText("[data-metric='bulky-scheduled']", String(bulkyRequests.filter((request) => request.status === "scheduled").length));
-  renderWasteSchedules(wasteSchedules);
-  renderBulkyWasteRequests(bulkyRequests);
+  renderWasteSchedules(visibleSchedules);
+  renderBulkyWasteRequests(visibleBulkyRequests);
 }
 
 function renderWasteSchedules(schedules: WasteSchedule[]) {
   const container = qs("[data-waste-schedule-list]");
   if (!container) return;
   if (!schedules.length) {
-    container.innerHTML = `<p class="meta">収集ルールはありません。</p>`;
+    container.innerHTML = `<p class="meta">${wasteScheduleSearch ? "検索条件に一致する収集ルールはありません。" : "収集ルールはありません。"}</p>`;
     return;
   }
   container.innerHTML = schedules
@@ -4269,7 +5269,7 @@ function renderBulkyWasteRequests(requests: BulkyWasteRequest[]) {
   const container = qs("[data-bulky-request-list]");
   if (!container) return;
   if (!requests.length) {
-    container.innerHTML = `<p class="meta">粗大ごみ申請はありません。</p>`;
+    container.innerHTML = `<p class="meta">${bulkyRequestSearch ? "検索条件に一致する粗大ごみ申請はありません。" : "粗大ごみ申請はありません。"}</p>`;
     return;
   }
   container.innerHTML = requests
@@ -4313,15 +5313,17 @@ function renderBulkyWasteRequests(requests: BulkyWasteRequest[]) {
 }
 
 async function updateBulkyWasteStatus(id: string, status: BulkyWasteStatus) {
+  if (!confirmBulkyWasteAction(status)) return;
   const patch: Record<string, string | null> = { status };
   if (canManage()) patch.handled_by = currentProfile!.id;
   if (status === "scheduled") patch.scheduled_date = new Date().toISOString().slice(0, 10);
   if (status === "completed") patch.completed_at = new Date().toISOString();
   const { error } = await supabase!.from("bulky_waste_requests").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("bulky_waste_request", id, status, `粗大ごみ申請を${bulkyWasteStatusLabels[status]}にしました。`);
   await renderWastePage();
 }
 
@@ -4330,26 +5332,38 @@ async function initMeetings() {
   qs("[data-agenda-form]")?.classList.toggle("hidden", !canManage());
   await renderMeetingsPage();
 
+  qs<HTMLInputElement>("[data-meeting-search]")?.addEventListener("input", async (event) => {
+    meetingSearch = event.currentTarget.value;
+    await renderMeetingsPage();
+  });
+
+  qs<HTMLInputElement>("[data-agenda-search]")?.addEventListener("input", async (event) => {
+    agendaSearch = event.currentTarget.value;
+    await renderMeetingsPage();
+  });
+
   qs<HTMLFormElement>("[data-meeting-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("meeting_sessions").insert({
-      title: String(form.get("title")),
+    const title = String(form.get("title"));
+    const { data: meeting, error } = await supabase!.from("meeting_sessions").insert({
+      title,
       kind: String(form.get("kind")),
       scheduled_at: new Date(String(form.get("scheduled_at"))).toISOString(),
       location: String(form.get("location") || "") || null,
       note: String(form.get("note") || "") || null,
       status: "open",
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-meeting-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-meeting-status]", "会議を公開しました。");
+    await recordActivity("meeting_session", meeting?.id ?? title, "created", `会議 ${title} を公開しました。`);
     await renderMeetingsPage();
   });
 
@@ -4358,19 +5372,21 @@ async function initMeetings() {
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("meeting_agenda_items").insert({
+    const title = String(form.get("title"));
+    const { data: agenda, error } = await supabase!.from("meeting_agenda_items").insert({
       meeting_id: String(form.get("meeting_id")),
-      title: String(form.get("title")),
+      title,
       description: String(form.get("description")),
       sort_order: Number(form.get("sort_order") || 0),
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-agenda-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-agenda-status]", "議案を追加しました。");
+    await recordActivity("meeting_agenda_item", agenda?.id ?? title, "created", `議案 ${title} を追加しました。`);
     await renderMeetingsPage();
   });
 
@@ -4464,11 +5480,24 @@ function renderMeetingSelects(sessions: MeetingSession[], agendaItems: MeetingAg
 function renderMeetingList(sessions: MeetingSession[], attendances: MeetingAttendance[]) {
   const container = qs("[data-meeting-list]");
   if (!container) return;
-  if (!sessions.length) {
-    container.innerHTML = `<p class="meta">会議はありません。</p>`;
+  const visibleSessions = sessions.filter((session) =>
+    includesSearch(
+      [
+        session.title,
+        session.location,
+        session.note,
+        session.scheduled_at,
+        meetingKindLabels[session.kind],
+        meetingStatusLabels[session.status],
+      ],
+      meetingSearch,
+    ),
+  );
+  if (!visibleSessions.length) {
+    container.innerHTML = `<p class="meta">${meetingSearch ? "検索条件に一致する会議はありません。" : "会議はありません。"}</p>`;
     return;
   }
-  container.innerHTML = sessions
+  container.innerHTML = visibleSessions
     .map((session) => {
       const related = attendances.filter((attendance) => attendance.meeting_id === session.id);
       const attending = related.filter((attendance) => attendance.status === "attending").length;
@@ -4508,11 +5537,23 @@ function renderMeetingList(sessions: MeetingSession[], attendances: MeetingAtten
 function renderAgendaList(agendaItems: MeetingAgendaItem[], votes: MeetingVote[]) {
   const container = qs("[data-agenda-list]");
   if (!container) return;
-  if (!agendaItems.length) {
-    container.innerHTML = `<p class="meta">議案はありません。</p>`;
+  const visibleAgendaItems = agendaItems.filter((item) =>
+    includesSearch(
+      [
+        item.title,
+        item.description,
+        item.sort_order,
+        item.meeting_sessions?.title,
+        item.meeting_sessions?.status ? meetingStatusLabels[item.meeting_sessions.status] : null,
+      ],
+      agendaSearch,
+    ),
+  );
+  if (!visibleAgendaItems.length) {
+    container.innerHTML = `<p class="meta">${agendaSearch ? "検索条件に一致する議案はありません。" : "議案はありません。"}</p>`;
     return;
   }
-  container.innerHTML = agendaItems
+  container.innerHTML = visibleAgendaItems
     .map((item) => {
       const related = votes.filter((vote) => vote.agenda_item_id === item.id);
       const approve = related.filter((vote) => vote.choice === "approve").length;
@@ -4536,12 +5577,14 @@ function renderAgendaList(agendaItems: MeetingAgendaItem[], votes: MeetingVote[]
 }
 
 async function updateMeetingStatus(id: string, status: MeetingStatus) {
+  if (!confirmMeetingAction(status)) return;
   const patch: Record<string, string | null> = { status, closed_at: status === "closed" ? new Date().toISOString() : null };
   const { error } = await supabase!.from("meeting_sessions").update(patch).eq("id", id);
   if (error) {
-    alert(error.message);
+    showErrorToast(error.message);
     return;
   }
+  await recordActivity("meeting_session", id, status, `会議を${meetingStatusLabels[status]}にしました。`);
   await renderMeetingsPage();
 }
 
@@ -4550,25 +5593,37 @@ async function initInspections() {
   qs("[data-inspection-record-form]")?.classList.toggle("hidden", !canManage());
   await renderInspectionsPage();
 
+  qs<HTMLInputElement>("[data-inspection-plan-search]")?.addEventListener("input", async (event) => {
+    inspectionPlanSearch = event.currentTarget.value;
+    await renderInspectionsPage();
+  });
+
+  qs<HTMLInputElement>("[data-inspection-record-search]")?.addEventListener("input", async (event) => {
+    inspectionRecordSearch = event.currentTarget.value;
+    await renderInspectionsPage();
+  });
+
   qs<HTMLFormElement>("[data-inspection-plan-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("inspection_plans").insert({
+    const title = String(form.get("title"));
+    const { data: plan, error } = await supabase!.from("inspection_plans").insert({
       asset_id: String(form.get("asset_id")),
-      title: String(form.get("title")),
+      title,
       frequency: String(form.get("frequency")),
       next_due_date: String(form.get("next_due_date")),
       note: String(form.get("note") || "") || null,
       created_by: currentProfile!.id,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-inspection-plan-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-inspection-plan-status]", "点検計画を作成しました。");
+    await recordActivity("inspection_plan", plan?.id ?? title, "created", `点検計画 ${title} を作成しました。`);
     await renderInspectionsPage();
   });
 
@@ -4607,7 +5662,7 @@ async function initInspections() {
       maintenanceRequestId = maintenance?.id ?? null;
     }
 
-    const { error } = await supabase!.from("inspection_records").insert({
+    const { data: inspectionRecord, error } = await supabase!.from("inspection_records").insert({
       plan_id: plan.id,
       asset_id: plan.asset_id,
       inspected_by: currentProfile!.id,
@@ -4615,13 +5670,19 @@ async function initInspections() {
       inspected_at: String(form.get("inspected_at")),
       note,
       maintenance_request_id: maintenanceRequestId,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-inspection-record-status]", error.message, true);
       return;
     }
     if (result === "repair_needed") {
       await supabase!.from("asset_items").update({ status: "repair_needed", managed_by: currentProfile!.id }).eq("id", plan.asset_id);
+      await recordActivity("inspection_record", inspectionRecord?.id ?? plan.id, "repair_needed", `点検異常を記録しました: ${plan.title}`);
+      if (maintenanceRequestId) {
+        await recordActivity("maintenance_request", maintenanceRequestId, "created_from_inspection", `点検異常から修繕依頼を作成しました: ${plan.title}`);
+      }
+    } else {
+      await recordActivity("inspection_record", inspectionRecord?.id ?? plan.id, result, `点検記録を登録しました: ${plan.title}`);
     }
     formElement.reset();
     setStatus("[data-inspection-record-status]", "点検記録を登録しました。");
@@ -4669,11 +5730,26 @@ function renderInspectionSelects(assets: AssetItem[], plans: InspectionPlan[]) {
 function renderInspectionPlans(plans: InspectionPlan[]) {
   const container = qs("[data-inspection-plan-list]");
   if (!container) return;
-  if (!plans.length) {
-    container.innerHTML = `<p class="meta">点検計画はありません。</p>`;
+  const visiblePlans = plans.filter((plan) =>
+    includesSearch(
+      [
+        plan.title,
+        plan.note,
+        plan.next_due_date,
+        plan.asset_items?.name,
+        plan.asset_items?.location,
+        plan.asset_items?.status ? assetStatusLabels[plan.asset_items.status] : null,
+        inspectionFrequencyLabels[plan.frequency],
+        plan.is_active ? "有効" : "停止",
+      ],
+      inspectionPlanSearch,
+    ),
+  );
+  if (!visiblePlans.length) {
+    container.innerHTML = `<p class="meta">${inspectionPlanSearch ? "検索条件に一致する点検計画はありません。" : "点検計画はありません。"}</p>`;
     return;
   }
-  container.innerHTML = plans
+  container.innerHTML = visiblePlans
     .map(
       (plan) => `
         <article class="list-item">
@@ -4694,11 +5770,24 @@ function renderInspectionPlans(plans: InspectionPlan[]) {
 function renderInspectionRecords(records: InspectionRecord[]) {
   const container = qs("[data-inspection-record-list]");
   if (!container) return;
-  if (!records.length) {
-    container.innerHTML = `<p class="meta">点検記録はありません。</p>`;
+  const visibleRecords = records.filter((record) =>
+    includesSearch(
+      [
+        record.inspection_plans?.title,
+        record.asset_items?.name,
+        record.inspected_at,
+        record.note,
+        inspectionResultLabels[record.result],
+        record.maintenance_request_id ? "修繕依頼へ連携済み" : null,
+      ],
+      inspectionRecordSearch,
+    ),
+  );
+  if (!visibleRecords.length) {
+    container.innerHTML = `<p class="meta">${inspectionRecordSearch ? "検索条件に一致する点検記録はありません。" : "点検記録はありません。"}</p>`;
     return;
   }
-  container.innerHTML = records
+  container.innerHTML = visibleRecords
     .map(
       (record) => `
         <article class="list-item">
@@ -4723,27 +5812,162 @@ async function initAdmin() {
     return;
   }
 
-  await Promise.all([renderAdminRooms(), renderProfiles()]);
+  await Promise.all([renderAdminRooms(), renderProfiles(), renderActivityLogs()]);
+  qs<HTMLInputElement>("[data-activity-log-search]")?.addEventListener("input", renderActivityLogList);
+  qs<HTMLSelectElement>("[data-activity-log-action]")?.addEventListener("change", renderActivityLogList);
 
   qs<HTMLFormElement>("[data-room-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
-    const { error } = await supabase!.from("rooms").insert({
-      name: String(form.get("name")),
+    const roomName = String(form.get("name"));
+    const { data: createdRoom, error } = await supabase!.from("rooms").insert({
+      name: roomName,
       capacity: Number(form.get("capacity") || 0),
       notes: String(form.get("notes") || ""),
       is_active: true,
-    });
+    }).select("id").single();
     if (error) {
       setStatus("[data-room-status]", error.message, true);
       return;
     }
     formElement.reset();
     setStatus("[data-room-status]", "会議室を追加しました。");
+    await recordActivity("room", createdRoom?.id ?? roomName, "created", `会議室 ${roomName} を追加しました。`);
     await renderAdminRooms();
+    await renderActivityLogs();
   });
+}
+
+async function renderActivityLogs() {
+  const { data } = await supabase!
+    .from("activity_logs")
+    .select("*, profiles(display_name)")
+    .order("created_at", { ascending: false })
+    .limit(80);
+  activityLogsCache = (data ?? []) as ActivityLog[];
+  renderActivityLogList();
+}
+
+const activityEntityLabels: Record<string, string> = {
+  activity_log: "操作履歴",
+  asset_item: "資産",
+  board_task: "理事会タスク",
+  bulky_waste_request: "粗大ごみ申請",
+  circular: "回覧",
+  duty_assignment: "当番",
+  event: "行事",
+  finance_entry: "収支台帳",
+  inspection_plan: "点検計画",
+  inspection_record: "点検記録",
+  lending_item: "貸出品",
+  lending_request: "貸出申請",
+  maintenance_request: "修繕依頼",
+  management_document: "管理文書",
+  meeting_agenda_item: "議案",
+  meeting_session: "会議",
+  notice: "通知",
+  parking_permit: "駐車・駐輪申請",
+  parking_space: "駐車・駐輪区画",
+  profile: "ユーザー",
+  resident_request: "住民相談",
+  room: "会議室",
+  room_booking: "会議室予約",
+  safety_event: "防災・安否",
+  survey: "意見募集",
+  vendor: "業者",
+  vendor_contract: "契約",
+  waste_schedule: "ごみ収集ルール",
+};
+
+const activityActionLabels: Record<string, string> = {
+  active: "承認",
+  approved: "承認",
+  archived: "保管",
+  cancelled: "中止",
+  checked_out: "貸出承認",
+  closed: "終了",
+  completed: "完了",
+  created: "作成",
+  created_from_inspection: "点検連携",
+  done: "完了",
+  ended: "終了",
+  in_progress: "対応中",
+  inspection_due: "点検予定",
+  lost: "紛失",
+  missed: "未実施",
+  rejected: "却下・差戻し",
+  repair_needed: "修理必要",
+  resolved: "完了",
+  returned: "返却済み",
+  role_changed: "権限変更",
+  updated: "更新",
+};
+
+const activityActionGroups: Record<string, string[]> = {
+  approval: ["active", "approved", "checked_out"],
+  archived: ["archived"],
+  closure: ["cancelled", "closed", "ended", "lost", "missed"],
+  completion: ["completed", "done", "resolved", "returned"],
+  created: ["created", "created_from_inspection"],
+  rejection: ["rejected"],
+};
+
+function activityEntityLabel(entityType: string) {
+  return activityEntityLabels[entityType] ?? entityType;
+}
+
+function activityActionLabel(action: string) {
+  return activityActionLabels[action] ?? action;
+}
+
+function matchesActivityActionFilter(log: ActivityLog, filter: string) {
+  if (filter === "all") return true;
+  return (activityActionGroups[filter] ?? [filter]).includes(log.action);
+}
+
+function renderActivityLogList() {
+  const container = qs("[data-activity-log-list]");
+  if (!container) return;
+  const search = qs<HTMLInputElement>("[data-activity-log-search]")?.value.trim().toLowerCase() ?? "";
+  const action = qs<HTMLSelectElement>("[data-activity-log-action]")?.value ?? "all";
+  const logs = activityLogsCache.filter((log) => {
+    const matchesAction = matchesActivityActionFilter(log, action);
+    const text = [
+      log.detail,
+      log.action,
+      activityActionLabel(log.action),
+      log.entity_type,
+      activityEntityLabel(log.entity_type),
+      log.entity_id,
+      log.profiles?.display_name,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return matchesAction && (!search || text.includes(search));
+  });
+  setText("[data-activity-log-summary]", `${logs.length} / ${activityLogsCache.length} 件`);
+  if (!logs.length) {
+    container.innerHTML = `<p class="meta">条件に合う操作履歴はありません。</p>`;
+    return;
+  }
+  container.innerHTML = logs
+    .map(
+      (log) => `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>操作履歴: ${escapeHtml(log.detail ?? log.action)}</strong>
+              <p class="meta">${escapeHtml(activityEntityLabel(log.entity_type))} / ${formatDateTime(log.created_at)} / ${escapeHtml(log.profiles?.display_name ?? "担当者")}</p>
+            </div>
+            <span class="badge">${escapeHtml(activityActionLabel(log.action))}</span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
 }
 
 async function renderAdminRooms() {
@@ -4778,8 +6002,8 @@ async function renderProfiles() {
               <strong>${escapeHtml(profile.display_name)}</strong>
               <p class="meta">${escapeHtml(profile.building)} ${escapeHtml(profile.unit_number)}</p>
             </div>
-            <select class="select" data-role-select="${profile.id}">
-              ${(["resident", "board_member", "admin"] as Role[])
+            <select class="select" data-role-select="${profile.id}" data-current-role="${profile.role}" data-profile-name="${escapeHtml(profile.display_name ?? profile.id)}">
+              ${assignableRoles
                 .map((role) => `<option value="${role}" ${profile.role === role ? "selected" : ""}>${roleLabels[role]}</option>`)
                 .join("")}
             </select>
@@ -4791,8 +6015,26 @@ async function renderProfiles() {
 
   qsa<HTMLSelectElement>("[data-role-select]").forEach((select) => {
     select.addEventListener("change", async () => {
-      const { error } = await supabase!.from("profiles").update({ role: select.value }).eq("id", select.dataset.roleSelect);
-      if (error) alert(error.message);
+      const profileId = select.dataset.roleSelect;
+      const previousRole = (select.dataset.currentRole ?? "resident") as Role;
+      const nextRole = select.value as Role;
+      const profileName = select.dataset.profileName ?? "ユーザー";
+      if (!profileId || previousRole === nextRole) return;
+      if (!confirmAction(`${profileName} の権限を ${roleLabels[nextRole]} に変更しますか？`)) {
+        select.value = previousRole;
+        return;
+      }
+
+      const { error } = await supabase!.from("profiles").update({ role: nextRole }).eq("id", profileId);
+      if (error) {
+        select.value = previousRole;
+        showErrorToast(error.message);
+        return;
+      }
+
+      select.dataset.currentRole = nextRole;
+      await recordActivity("profile", profileId, "role_changed", `${profileName}: ${roleLabels[previousRole]} -> ${roleLabels[nextRole]}`);
+      await renderActivityLogs();
     });
   });
 }

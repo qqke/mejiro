@@ -14,6 +14,7 @@ import {
   Menu,
   LogOut,
   MessageSquareWarning,
+  Search,
   KeyRound,
   Newspaper,
   NotebookTabs,
@@ -57,29 +58,51 @@ const { title, description = "団地管理組合電子化システム", page } =
 const base = import.meta.env.BASE_URL;
 const asset = (path: string) => `${base}${path.replace(/^\//, "")}`;
 
-const navItems = [
-  { href: asset("/"), label: "ホーム", page: "home", icon: Home },
-  { href: asset("/rooms/"), label: "会議室", page: "rooms", icon: Building2 },
-  { href: asset("/notices/"), label: "通知・課題", page: "notices", icon: Bell },
-  { href: asset("/events/"), label: "年間行事", page: "events", icon: CalendarDays },
-  { href: asset("/documents/"), label: "管理文書", page: "documents", icon: FileText },
-  { href: asset("/maintenance/"), label: "修繕工事", page: "maintenance", icon: Wrench },
-  { href: asset("/finance/"), label: "収支台帳", page: "finance", icon: HandCoins },
-  { href: asset("/assets/"), label: "資産台帳", page: "assets", icon: Boxes },
-  { href: asset("/vendors/"), label: "業者契約", page: "vendors", icon: Store },
-  { href: asset("/residents/"), label: "住民名簿", page: "residents", icon: NotebookTabs },
-  { href: asset("/surveys/"), label: "意見収集", page: "surveys", icon: Vote },
-  { href: asset("/safety/"), label: "防災安否", page: "safety", icon: ShieldCheck },
-  { href: asset("/tasks/"), label: "理事タスク", page: "tasks", icon: ClipboardCheck },
-  { href: asset("/parking/"), label: "駐車駐輪", page: "parking", icon: CircleParking },
-  { href: asset("/requests/"), label: "相談苦情", page: "requests", icon: MessageSquareWarning },
-  { href: asset("/circulars/"), label: "回覧配布", page: "circulars", icon: Newspaper },
-  { href: asset("/lending/"), label: "鍵貸出", page: "lending", icon: KeyRound },
-  { href: asset("/duties/"), label: "当番巡回", page: "duties", icon: ClipboardList },
-  { href: asset("/waste/"), label: "ごみ資源", page: "waste", icon: Recycle },
-  { href: asset("/meetings/"), label: "会議治理", page: "meetings", icon: Vote },
-  { href: asset("/inspections/"), label: "長期点検", page: "inspections", icon: ClipboardCheck },
-  { href: asset("/admin/"), label: "管理", page: "admin", icon: Settings },
+const navGroups = [
+  {
+    id: "daily",
+    label: "日常",
+    items: [
+      { href: asset("/"), label: "ホーム", page: "home", icon: Home },
+      { href: asset("/rooms/"), label: "会議室", page: "rooms", icon: Building2 },
+      { href: asset("/notices/"), label: "通知・課題", page: "notices", icon: Bell },
+      { href: asset("/events/"), label: "年間行事", page: "events", icon: CalendarDays },
+      { href: asset("/requests/"), label: "相談苦情", page: "requests", icon: MessageSquareWarning },
+      { href: asset("/waste/"), label: "ごみ資源", page: "waste", icon: Recycle },
+    ],
+  },
+  {
+    id: "board",
+    label: "理事会",
+    items: [
+      { href: asset("/documents/"), label: "管理文書", page: "documents", icon: FileText },
+      { href: asset("/surveys/"), label: "意見収集", page: "surveys", icon: Vote },
+      { href: asset("/tasks/"), label: "理事タスク", page: "tasks", icon: ClipboardCheck },
+      { href: asset("/circulars/"), label: "回覧配布", page: "circulars", icon: Newspaper },
+      { href: asset("/meetings/"), label: "会議治理", page: "meetings", icon: Vote },
+    ],
+  },
+  {
+    id: "operations",
+    label: "運用",
+    items: [
+      { href: asset("/maintenance/"), label: "修繕工事", page: "maintenance", icon: Wrench },
+      { href: asset("/finance/"), label: "収支台帳", page: "finance", icon: HandCoins },
+      { href: asset("/assets/"), label: "資産台帳", page: "assets", icon: Boxes },
+      { href: asset("/vendors/"), label: "業者契約", page: "vendors", icon: Store },
+      { href: asset("/residents/"), label: "住民名簿", page: "residents", icon: NotebookTabs },
+      { href: asset("/safety/"), label: "防災安否", page: "safety", icon: ShieldCheck },
+      { href: asset("/parking/"), label: "駐車駐輪", page: "parking", icon: CircleParking },
+      { href: asset("/lending/"), label: "鍵貸出", page: "lending", icon: KeyRound },
+      { href: asset("/duties/"), label: "当番巡回", page: "duties", icon: ClipboardList },
+      { href: asset("/inspections/"), label: "長期点検", page: "inspections", icon: ClipboardCheck },
+    ],
+  },
+  {
+    id: "admin",
+    label: "管理",
+    items: [{ href: asset("/admin/"), label: "管理", page: "admin", icon: Settings }],
+  },
 ];
 ---
 
@@ -115,21 +138,40 @@ const navItems = [
           メニュー
         </button>
 
+        <div class="global-search" data-global-search>
+          <label class="global-search-field">
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="画面を検索"
+              aria-label="画面を検索"
+              autocomplete="off"
+              data-global-search-input
+            />
+          </label>
+          <div class="global-search-results hidden" data-global-search-results></div>
+        </div>
+
         <nav class="nav" id="primary-navigation" aria-label="主要ナビゲーション">
           {
-            navItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <a
-                  class="nav-link"
-                  href={item.href}
-                  aria-current={item.page === page ? "page" : undefined}
-                >
-                  <Icon size={18} aria-hidden="true" />
-                  <span>{item.label}</span>
-                </a>
-              );
-            })
+            navGroups.map((group) => (
+              <section class="nav-section" data-nav-group={group.id} aria-label={group.label}>
+                <p class="nav-group-label">{group.label}</p>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <a
+                      class="nav-link"
+                      href={item.href}
+                      aria-current={item.page === page ? "page" : undefined}
+                    >
+                      <Icon size={18} aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </a>
+                  );
+                })}
+              </section>
+            ))
           }
         </nav>
 
@@ -149,6 +191,7 @@ const navItems = [
         <slot />
       </main>
     </div>
+    <div class="toast-region" data-toast-region aria-live="polite" aria-atomic="false"></div>
 
     <script>
       import "../scripts/app.ts";

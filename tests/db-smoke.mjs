@@ -217,6 +217,11 @@ const v20v21Path = path.join(repoRoot, "supabase", "v20_v21_migration.sql");
 const v22v23Path = path.join(repoRoot, "supabase", "v22_v23_migration.sql");
 const v23v24Path = path.join(repoRoot, "supabase", "v23_v24_migration.sql");
 const v24v25Path = path.join(repoRoot, "supabase", "v24_v25_migration.sql");
+const v26v27Path = path.join(repoRoot, "supabase", "v26_v27_migration.sql");
+const v27v28Path = path.join(repoRoot, "supabase", "v27_v28_migration.sql");
+const v28v29Path = path.join(repoRoot, "supabase", "v28_v29_migration.sql");
+const v29v30Path = path.join(repoRoot, "supabase", "v29_v30_migration.sql");
+const v30v31Path = path.join(repoRoot, "supabase", "v30_v31_migration.sql");
 
 const cluster = await createTempCluster();
 if (!cluster) {
@@ -267,23 +272,70 @@ grant execute on function auth.uid() to authenticated;
 \i '${toPosixPath(v22v23Path)}'
 \i '${toPosixPath(v23v24Path)}'
 \i '${toPosixPath(v24v25Path)}'
+\i '${toPosixPath(v26v27Path)}'
+\i '${toPosixPath(v27v28Path)}'
+\i '${toPosixPath(v28v29Path)}'
+\i '${toPosixPath(v29v30Path)}'
+\i '${toPosixPath(v30v31Path)}'
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
   ('11111111-1111-1111-1111-111111111111', 'admin@example.com', '{"display_name":"管理者DB"}'),
   ('22222222-2222-2222-2222-222222222222', 'board@example.com', '{"display_name":"理事DB"}'),
-  ('33333333-3333-3333-3333-333333333333', 'resident@example.com', '{"display_name":"住民DB"}')
+  ('33333333-3333-3333-3333-333333333333', 'resident@example.com', '{"display_name":"住民DB"}'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'chair@example.com', '{"display_name":"主席DB"}')
 on conflict (id) do nothing;
 
 update public.profiles set role = 'admin' where id = '11111111-1111-1111-1111-111111111111';
 update public.profiles set role = 'board_member' where id = '22222222-2222-2222-2222-222222222222';
+update public.profiles set role = 'chair' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 insert into public.rooms (id, name, capacity, notes, is_active)
 values ('44444444-4444-4444-4444-444444444444', 'DB会議室', 24, 'db smoke', true)
 on conflict do nothing;
 
+insert into public.room_bookings (id, room_id, user_id, purpose, start_at, end_at, status, approved_by, approved_at)
+values (
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3',
+  '44444444-4444-4444-4444-444444444444',
+  '33333333-3333-3333-3333-333333333333',
+  'DB approved resident booking',
+  '2026-05-20 10:00+09',
+  '2026-05-20 11:00+09',
+  'approved',
+  '11111111-1111-1111-1111-111111111111',
+  now()
+)
+on conflict do nothing;
+
+insert into public.room_bookings (id, room_id, user_id, purpose, start_at, end_at, status)
+values (
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1',
+  '44444444-4444-4444-4444-444444444444',
+  '22222222-2222-2222-2222-222222222222',
+  'DB board booking',
+  '2026-05-20 16:00+09',
+  '2026-05-20 17:00+09',
+  'pending'
+)
+on conflict do nothing;
+
 insert into public.asset_items (id, name, category, status, location, inspection_due_at, note, managed_by, created_by, created_at, updated_at)
 values ('55555555-5555-5555-5555-555555555555', 'DB共用ポンプ', 'equipment', 'active', '機械室', '2026-06-01', 'db smoke', '11111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.parking_spaces (id, code, kind, location, monthly_fee, is_active, is_available, created_by, created_at, updated_at)
+values
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd1', 'DB-P-OPEN', 'car', '1階', 12000, true, true, '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd2', 'DB-P-USED', 'car', '2階', 12000, true, false, '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd3', 'DB-P-OFF', 'car', '3階', 12000, false, true, '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.lending_items (id, name, kind, location, note, is_active, is_available, created_by, created_at, updated_at)
+values
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd4', 'DB貸出可', 'equipment', '管理室', 'available', true, true, '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd5', 'DB貸出中', 'equipment', '管理室', 'unavailable', true, false, '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-ddddddddddd6', 'DB貸出停止', 'equipment', '管理室', 'inactive', false, true, '11111111-1111-1111-1111-111111111111', now(), now())
 on conflict do nothing;
 
 insert into public.meeting_sessions (id, title, kind, status, scheduled_at, location, note, created_by, created_at, updated_at)
@@ -303,6 +355,56 @@ insert into public.inspection_plans (id, asset_id, title, frequency, next_due_da
 values
   ('88888888-8888-8888-8888-888888888881', '55555555-5555-5555-5555-555555555555', 'DB有効点検', 'monthly', '2026-06-15', true, 'active', '11111111-1111-1111-1111-111111111111', now(), now()),
   ('88888888-8888-8888-8888-888888888882', '55555555-5555-5555-5555-555555555555', 'DB停止点検', 'annual', '2026-12-31', false, 'inactive', '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.notices (id, title, body, kind, target_role, created_by, created_at)
+values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', 'DB主席通知', 'chair target', 'topic', 'chair', '11111111-1111-1111-1111-111111111111', now()),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', 'DB住民通知', 'resident target', 'topic', 'resident', '11111111-1111-1111-1111-111111111111', now())
+on conflict do nothing;
+
+insert into public.circulars (id, title, kind, target_role, status, body, due_date, created_by, created_at, updated_at)
+values
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3', 'DB主席回覧', 'notice', 'chair', 'published', 'chair circular', '2026-06-30', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4', 'DB住民回覧', 'notice', 'resident', 'published', 'resident circular', '2026-06-30', '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.maintenance_requests (id, title, category, priority, status, location, description, requester_id, created_at, updated_at)
+values
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2', 'DB住民修繕', 'equipment', 'normal', 'open', '1階', 'resident maintenance', '33333333-3333-3333-3333-333333333333', now(), now()),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3', 'DB理事修繕', 'equipment', 'normal', 'open', '2階', 'board maintenance', '22222222-2222-2222-2222-222222222222', now(), now())
+on conflict do nothing;
+
+insert into public.resident_requests (id, title, category, visibility, status, body, requester_id, created_at, updated_at)
+values
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4', 'DB住民相談', 'noise', 'private', 'open', 'resident request', '33333333-3333-3333-3333-333333333333', now(), now()),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5', 'DB理事相談', 'noise', 'board', 'open', 'board request', '22222222-2222-2222-2222-222222222222', now(), now())
+on conflict do nothing;
+
+insert into public.duty_assignments (id, title, kind, status, assignee_id, scheduled_date, location, note, created_by, created_at, updated_at)
+values
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6', 'DB住民当番', 'cleaning', 'planned', '33333333-3333-3333-3333-333333333333', '2026-05-19', '1階', 'resident duty', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7', 'DB理事当番', 'patrol', 'planned', '22222222-2222-2222-2222-222222222222', '2026-05-19', '2階', 'board duty', '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.bulky_waste_requests (id, user_id, item_name, status, preferred_date, pickup_location, note, created_at, updated_at)
+values
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb8', '33333333-3333-3333-3333-333333333333', 'DB住民粗大ごみ', 'submitted', '2026-05-28', '1階', 'resident bulky waste', now(), now()),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb9', '22222222-2222-2222-2222-222222222222', 'DB理事粗大ごみ', 'submitted', '2026-05-28', '2階', 'board bulky waste', now(), now())
+on conflict do nothing;
+
+insert into public.surveys (id, title, question, options, is_open, closes_at, created_by, created_at, updated_at)
+values
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc1', 'DB受付中意見募集', 'open survey?', array['A', 'B'], true, null, '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc2', 'DB締切意見募集', 'closed survey?', array['A', 'B'], false, null, '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc3', 'DB期限切れ意見募集', 'expired survey?', array['A', 'B'], true, now() - interval '1 day', '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.safety_events (id, title, kind, status, scheduled_at, location, note, created_by, created_at, updated_at)
+values
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc4', 'DB有効安否', 'checkin', 'active', now(), '1階', 'active safety', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc5', 'DB完了安否', 'checkin', 'completed', now(), '2階', 'completed safety', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('cccccccc-cccc-4ccc-8ccc-ccccccccccc6', 'DB取消安否', 'checkin', 'cancelled', now(), '3階', 'cancelled safety', '11111111-1111-1111-1111-111111111111', now(), now())
 on conflict do nothing;
 `
 );
@@ -347,11 +449,302 @@ begin
     raise exception 'resident booking insert failed';
   end if;
 
+  perform public.update_own_pending_booking(
+    (select id from public.room_bookings where purpose = 'DB smoke booking'),
+    '44444444-4444-4444-4444-444444444444',
+    '2026-05-20 15:00+09',
+    '2026-05-20 16:00+09',
+    'DB smoke booking updated'
+  );
+
+  select count(*) into actual
+  from public.room_bookings
+  where purpose = 'DB smoke booking updated'
+    and start_at = '2026-05-20 15:00+09';
+
+  if actual <> 1 then
+    raise exception 'resident own booking RPC update failed';
+  end if;
+
+  begin
+    perform public.update_own_pending_booking(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1',
+      '44444444-4444-4444-4444-444444444444',
+      '2026-05-20 17:00+09',
+      '2026-05-20 18:00+09',
+      'forged booking update'
+    );
+    raise exception 'resident should not update another user booking via RPC';
+  exception
+    when others then
+      if sqlerrm = 'resident should not update another user booking via RPC' then
+        raise;
+      end if;
+  end;
+
+  begin
+    perform public.update_own_pending_booking(
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee3',
+      '44444444-4444-4444-4444-444444444444',
+      '2026-05-20 18:00+09',
+      '2026-05-20 19:00+09',
+      'approved booking edit'
+    );
+    raise exception 'resident should not update approved booking via RPC';
+  exception
+    when others then
+      if sqlerrm = 'resident should not update approved booking via RPC' then
+        raise;
+      end if;
+  end;
+
   update public.room_bookings set status = 'approved' where purpose = 'DB smoke booking';
   get diagnostics actual = row_count;
   if actual <> 0 then
     raise exception 'resident should not be able to update room bookings';
   end if;
+
+  insert into public.room_bookings (id, room_id, user_id, purpose, start_at, end_at, status)
+  values (
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2',
+    '44444444-4444-4444-4444-444444444444',
+    auth.uid(),
+    'DB cancellable booking',
+    '2026-05-20 19:00+09',
+    '2026-05-20 20:00+09',
+    'pending'
+  );
+
+  perform public.cancel_own_pending_booking('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2');
+
+  select count(*) into actual
+  from public.room_bookings
+  where id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2'
+    and status = 'cancelled';
+
+  if actual <> 1 then
+    raise exception 'resident own booking RPC cancel failed';
+  end if;
+
+  begin
+    perform public.cancel_own_pending_booking('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1');
+    raise exception 'resident should not cancel another user booking via RPC';
+  exception
+    when others then
+      if sqlerrm = 'resident should not cancel another user booking via RPC' then
+        raise;
+      end if;
+  end;
+
+  update public.maintenance_requests
+  set status = 'closed'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2';
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should be able to close own maintenance request, got %', actual;
+  end if;
+
+  update public.maintenance_requests
+  set status = 'closed'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3';
+  get diagnostics actual = row_count;
+  if actual <> 0 then
+    raise exception 'resident should not update another user maintenance request, got %', actual;
+  end if;
+
+  update public.resident_requests
+  set status = 'closed'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4';
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should be able to close own resident request, got %', actual;
+  end if;
+
+  update public.resident_requests
+  set status = 'closed'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5';
+  get diagnostics actual = row_count;
+  if actual <> 0 then
+    raise exception 'resident should not update another user resident request, got %', actual;
+  end if;
+
+  update public.bulky_waste_requests
+  set status = 'cancelled'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb8';
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should be able to cancel own bulky waste request, got %', actual;
+  end if;
+
+  update public.bulky_waste_requests
+  set status = 'cancelled'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb9';
+  get diagnostics actual = row_count;
+  if actual <> 0 then
+    raise exception 'resident should not update another user bulky waste request, got %', actual;
+  end if;
+
+  update public.duty_assignments
+  set status = 'done'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6';
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should be able to complete own duty, got %', actual;
+  end if;
+
+  update public.duty_assignments
+  set status = 'done'
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb7';
+  get diagnostics actual = row_count;
+  if actual <> 0 then
+    raise exception 'resident should not update another user duty, got %', actual;
+  end if;
+
+  begin
+    update public.duty_assignments
+    set status = 'missed'
+    where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb6';
+    raise exception 'resident should not mark own duty missed';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, created_at, updated_at)
+  values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd7', 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1', auth.uid(), 'DB住民車', 'pending', '2026-06-01', now(), now());
+
+  begin
+    insert into public.parking_permits (space_id, user_id, vehicle_label, status, start_date)
+    values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd2', auth.uid(), 'DB占用車', 'pending', '2026-06-01');
+    raise exception 'resident should not apply for unavailable parking space';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.parking_permits (space_id, user_id, vehicle_label, status, start_date)
+    values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd3', auth.uid(), 'DB停止車', 'pending', '2026-06-01');
+    raise exception 'resident should not apply for inactive parking space';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.parking_permits (space_id, user_id, vehicle_label, status, start_date)
+    values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd1', '22222222-2222-2222-2222-222222222222', 'DB他人車', 'pending', '2026-06-01');
+    raise exception 'resident should not apply parking for another user';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  insert into public.lending_requests (id, item_id, user_id, purpose, status, created_at, updated_at)
+  values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd8', 'dddddddd-dddd-4ddd-8ddd-ddddddddddd4', auth.uid(), 'DB貸出申請', 'pending', now(), now());
+
+  begin
+    insert into public.lending_requests (item_id, user_id, purpose, status)
+    values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd5', auth.uid(), 'DB貸出中申請', 'pending');
+    raise exception 'resident should not request unavailable lending item';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.lending_requests (item_id, user_id, purpose, status)
+    values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd6', auth.uid(), 'DB停止貸出申請', 'pending');
+    raise exception 'resident should not request inactive lending item';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.lending_requests (item_id, user_id, purpose, status)
+    values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd4', '22222222-2222-2222-2222-222222222222', 'DB他人貸出申請', 'pending');
+    raise exception 'resident should not request lending for another user';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  insert into public.survey_responses (id, survey_id, user_id, option_value, comment, created_at)
+  values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc7', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', auth.uid(), 'A', 'open survey response', now());
+
+  update public.survey_responses
+  set option_value = 'B'
+  where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc7';
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should update own open survey response, got %', actual;
+  end if;
+
+  begin
+    insert into public.survey_responses (survey_id, user_id, option_value, comment)
+    values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc1', '22222222-2222-2222-2222-222222222222', 'A', 'forged survey');
+    raise exception 'resident should not answer survey for another user';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.survey_responses (survey_id, user_id, option_value, comment)
+    values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc2', auth.uid(), 'A', 'closed survey');
+    raise exception 'resident should not answer closed survey';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.survey_responses (survey_id, user_id, option_value, comment)
+    values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc3', auth.uid(), 'A', 'expired survey');
+    raise exception 'resident should not answer expired survey';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  insert into public.safety_checkins (id, event_id, user_id, status, comment, created_at)
+  values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc8', 'cccccccc-cccc-4ccc-8ccc-ccccccccccc4', auth.uid(), 'safe', 'active checkin', now());
+
+  update public.safety_checkins
+  set status = 'needs_help'
+  where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc8';
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should update own active safety checkin, got %', actual;
+  end if;
+
+  begin
+    insert into public.safety_checkins (event_id, user_id, status, comment)
+    values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc4', '22222222-2222-2222-2222-222222222222', 'safe', 'forged safety');
+    raise exception 'resident should not check in safety event for another user';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.safety_checkins (event_id, user_id, status, comment)
+    values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc5', auth.uid(), 'safe', 'completed safety');
+    raise exception 'resident should not check in completed safety event';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.safety_checkins (event_id, user_id, status, comment)
+    values ('cccccccc-cccc-4ccc-8ccc-ccccccccccc6', auth.uid(), 'safe', 'cancelled safety');
+    raise exception 'resident should not check in cancelled safety event';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
 
   begin
     insert into public.management_documents (title, kind, version, summary, markdown_body, status, created_by, updated_by)
@@ -367,6 +760,115 @@ begin
 
   insert into public.meeting_votes (agenda_item_id, user_id, choice, comment)
   values ('77777777-7777-7777-7777-777777777771', auth.uid(), 'approve', 'resident vote');
+
+  update public.meeting_attendances
+  set status = 'proxy', proxy_to = '代理人DB'
+  where meeting_id = '66666666-6666-6666-6666-666666666661'
+    and user_id = auth.uid();
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should be able to update own open-meeting attendance, got %', actual;
+  end if;
+
+  update public.meeting_votes
+  set choice = 'abstain'
+  where agenda_item_id = '77777777-7777-7777-7777-777777777771'
+    and user_id = auth.uid();
+  get diagnostics actual = row_count;
+  if actual <> 1 then
+    raise exception 'resident should be able to update own open-meeting vote, got %', actual;
+  end if;
+
+  begin
+    insert into public.meeting_attendances (meeting_id, user_id, status, proxy_to, note)
+    values ('66666666-6666-6666-6666-666666666661', '22222222-2222-2222-2222-222222222222', 'attending', null, 'forged attendance');
+    raise exception 'resident should not insert attendance for another user';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.meeting_votes (agenda_item_id, user_id, choice, comment)
+    values ('77777777-7777-7777-7777-777777777771', '22222222-2222-2222-2222-222222222222', 'approve', 'forged vote');
+    raise exception 'resident should not insert vote for another user';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.meeting_attendances (meeting_id, user_id, status, proxy_to, note)
+    values ('66666666-6666-6666-6666-666666666663', auth.uid(), 'attending', null, 'cancelled attendance');
+    raise exception 'resident should not insert attendance for cancelled meeting';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  begin
+    insert into public.meeting_votes (agenda_item_id, user_id, choice, comment)
+    values ('77777777-7777-7777-7777-777777777773', auth.uid(), 'approve', 'cancelled vote');
+    raise exception 'resident should not insert vote for cancelled meeting';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  insert into public.activity_logs (id, actor_id, action, entity_type, entity_id, detail)
+  values (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+    auth.uid(),
+    'created',
+    'room_booking',
+    '44444444-4444-4444-4444-444444444444',
+    'resident activity log'
+  );
+
+  select count(*) into actual
+  from public.activity_logs
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1';
+
+  if actual <> 0 then
+    raise exception 'resident should not be able to select activity logs, got %', actual;
+  end if;
+
+  begin
+    insert into public.activity_logs (actor_id, action, entity_type, detail)
+    values ('22222222-2222-2222-2222-222222222222', 'created', 'profile', 'forged actor');
+    raise exception 'resident should not be able to forge activity log actor_id';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+end
+$$;
+
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', false);
+
+do $$
+declare
+  actual integer;
+begin
+  select count(*) into actual from public.notices where title = 'DB主席通知';
+  if actual <> 1 then
+    raise exception 'chair should see chair-targeted notices, got %', actual;
+  end if;
+
+  select count(*) into actual from public.notices where title = 'DB住民通知';
+  if actual <> 0 then
+    raise exception 'chair should not see resident-targeted notices, got %', actual;
+  end if;
+
+  select count(*) into actual from public.circulars where title = 'DB主席回覧';
+  if actual <> 1 then
+    raise exception 'chair should see chair-targeted circulars, got %', actual;
+  end if;
+
+  select count(*) into actual from public.circulars where title = 'DB住民回覧';
+  if actual <> 0 then
+    raise exception 'chair should not see resident-targeted circulars, got %', actual;
+  end if;
 end
 $$;
 
@@ -386,6 +888,15 @@ begin
   select count(*) into actual from public.inspection_plans;
   if actual <> 2 then
     raise exception 'board member should see all inspection plans, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from public.activity_logs
+  where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
+    and detail = 'resident activity log';
+
+  if actual <> 1 then
+    raise exception 'board member should see resident activity logs, got %', actual;
   end if;
 
   select updated_at into before_updated

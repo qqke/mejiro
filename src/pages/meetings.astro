@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { CalendarDays, ClipboardList, Plus, Vote } from "@lucide/astro";
+import { CalendarDays, ClipboardList, Plus, Search, Vote } from "@lucide/astro";
 ---
 
 <AppLayout title="会議治理" page="meetings">
@@ -141,10 +141,18 @@ import { CalendarDays, ClipboardList, Plus, Vote } from "@lucide/astro";
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <h2><CalendarDays size={18} aria-hidden="true" /> 会議一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 会議を検索</span>
+        <input class="input" type="search" placeholder="会議名・場所・説明" data-meeting-search />
+      </label>
       <div class="list" data-meeting-list></div>
     </div>
     <div class="panel">
       <h2><ClipboardList size={18} aria-hidden="true" /> 議案・結果</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 議案を検索</span>
+        <input class="input" type="search" placeholder="議案名・会議名・内容" data-agenda-search />
+      </label>
       <div class="list" data-agenda-list></div>
     </div>
   </section>

@@ -21,6 +21,16 @@ async function waitForCondition(condition, label) {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
+async function clickAndConfirm(page, action, expectedMessage) {
+  let sawDialog = false;
+  page.once("dialog", async (dialog) => {
+    sawDialog = dialog.message().includes(expectedMessage);
+    await dialog.accept();
+  });
+  await action();
+  await waitForCondition(() => sawDialog, `${expectedMessage} confirmation dialog`);
+}
+
 await withPreviewPage(async ({ page, baseUrl }) => {
   const backend = createMockSupabaseBackend();
   await backend.install(page);
@@ -38,7 +48,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await waitForCondition(() => backend.state.board_tasks.some((task) => task.title === "中止タスク"), "task insert");
   const taskRow = rowByText(page, "[data-task-list] .list-item", "中止タスク");
   await assert((await taskRow.count()) === 1, "created task row should exist");
-  await taskRow.locator("[data-task-cancel]").click();
+  await clickAndConfirm(page, () => taskRow.locator("[data-task-cancel]").click(), "中止");
   await waitForCondition(() => backend.state.board_tasks.some((task) => task.title === "中止タスク" && task.status === "cancelled"), "task cancelled");
 
   await page.goto(`${baseUrl}/parking/`, { waitUntil: "domcontentloaded" });
@@ -51,7 +61,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await waitForCondition(() => backend.state.parking_permits.some((permit) => permit.vehicle_label === "分岐車両"), "parking permit insert");
   const parkingRow = rowByText(page, "[data-parking-permit-list] .list-item", "分岐車両");
   await assert((await parkingRow.count()) === 1, "created parking permit row should exist");
-  await parkingRow.locator("[data-parking-reject]").click();
+  await clickAndConfirm(page, () => parkingRow.locator("[data-parking-reject]").click(), "却下");
   await waitForCondition(() => backend.state.parking_permits.some((permit) => permit.vehicle_label === "分岐車両" && permit.status === "rejected"), "parking permit rejected");
 
   await page.goto(`${baseUrl}/lending/`, { waitUntil: "domcontentloaded" });
@@ -63,7 +73,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await waitForCondition(() => backend.state.lending_requests.some((request) => request.purpose === "拒否テスト"), "lending request insert");
   const lendingRow = rowByText(page, "[data-lending-request-list] .list-item", "拒否テスト");
   await assert((await lendingRow.count()) === 1, "created lending request row should exist");
-  await lendingRow.locator("[data-lending-reject]").click();
+  await clickAndConfirm(page, () => lendingRow.locator("[data-lending-reject]").click(), "却下");
   await waitForCondition(() => backend.state.lending_requests.some((request) => request.purpose === "拒否テスト" && request.status === "rejected"), "lending request rejected");
 
   await page.locator("#lending-item").selectOption(await firstOptionValue(page, "#lending-item"));
@@ -73,9 +83,9 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await waitForCondition(() => backend.state.lending_requests.some((request) => request.purpose === "紛失テスト"), "lending checked out insert");
   const checkedOutRow = rowByText(page, "[data-lending-request-list] .list-item", "紛失テスト");
   await assert((await checkedOutRow.count()) === 1, "checked out lending request row should exist");
-  await checkedOutRow.locator("[data-lending-approve]").click();
+  await clickAndConfirm(page, () => checkedOutRow.locator("[data-lending-approve]").click(), "貸出承認");
   await waitForCondition(() => backend.state.lending_requests.some((request) => request.purpose === "紛失テスト" && request.status === "checked_out"), "lending request checked out");
-  await checkedOutRow.locator("[data-lending-lost]").click();
+  await clickAndConfirm(page, () => checkedOutRow.locator("[data-lending-lost]").click(), "紛失");
   await waitForCondition(() => backend.state.lending_requests.some((request) => request.purpose === "紛失テスト" && request.status === "lost"), "lending request lost");
 
   await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
@@ -89,7 +99,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await waitForCondition(() => backend.state.meeting_sessions.some((meeting) => meeting.title === "中止会議"), "meeting insert");
   const meetingRow = rowByText(page, "[data-meeting-list] .list-item", "中止会議");
   await assert((await meetingRow.count()) === 1, "created meeting row should exist");
-  await meetingRow.locator("[data-meeting-cancel]").click();
+  await clickAndConfirm(page, () => meetingRow.locator("[data-meeting-cancel]").click(), "中止");
   await waitForCondition(() => backend.state.meeting_sessions.some((meeting) => meeting.title === "中止会議" && meeting.status === "cancelled"), "meeting cancelled");
 
   await expectText(page, "[data-metric='meeting-open']", "1", "meeting open metric should keep the seeded open meeting");

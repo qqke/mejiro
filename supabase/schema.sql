@@ -6,7 +6,7 @@ create extension if not exists btree_gist;
 create type public.app_role as enum ('resident', 'board_member', 'chair', 'president', 'admin');
 create type public.booking_status as enum ('pending', 'approved', 'rejected', 'cancelled');
 create type public.notice_kind as enum ('notice', 'meeting', 'topic');
-create type public.notice_target_role as enum ('all', 'resident', 'board_member', 'admin');
+create type public.notice_target_role as enum ('all', 'resident', 'board_member', 'chair', 'president', 'admin');
 create type public.document_kind as enum ('minutes', 'rule', 'estimate', 'approval', 'other');
 create type public.document_status as enum ('review', 'board_review', 'chair_review', 'president_review', 'approved', 'rejected', 'archived');
 create type public.document_approval_action as enum ('approved', 'rejected');
@@ -531,6 +531,19 @@ create table public.inspection_records (
   updated_at timestamptz not null default now()
 );
 
+create table public.activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references public.profiles(id) on delete set null,
+  action text not null,
+  entity_type text not null,
+  entity_id uuid,
+  detail text,
+  created_at timestamptz not null default now()
+);
+
+create index activity_logs_created_at_idx
+on public.activity_logs(created_at desc);
+
 create or replace function app_private.has_role(required_roles public.app_role[])
 returns boolean
 language sql
@@ -787,6 +800,7 @@ alter table public.meeting_attendances enable row level security;
 alter table public.meeting_votes enable row level security;
 alter table public.inspection_plans enable row level security;
 alter table public.inspection_records enable row level security;
+alter table public.activity_logs enable row level security;
 
 create policy "profiles_select_own_or_manager"
 on public.profiles for select
@@ -1054,13 +1068,29 @@ using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin
 create policy "survey_responses_insert_own"
 on public.survey_responses for insert
 to authenticated
-with check (user_id = auth.uid());
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.surveys
+    where surveys.id = survey_responses.survey_id
+      and surveys.is_open = true
+      and (surveys.closes_at is null or surveys.closes_at > now())
+  )
+);
 
 create policy "survey_responses_update_own"
 on public.survey_responses for update
 to authenticated
 using (user_id = auth.uid())
-with check (user_id = auth.uid());
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.surveys
+    where surveys.id = survey_responses.survey_id
+      and surveys.is_open = true
+      and (surveys.closes_at is null or surveys.closes_at > now())
+  )
+);
 
 create policy "safety_events_select_authenticated"
 on public.safety_events for select
@@ -1086,13 +1116,27 @@ using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin
 create policy "safety_checkins_insert_own"
 on public.safety_checkins for insert
 to authenticated
-with check (user_id = auth.uid());
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.safety_events
+    where safety_events.id = safety_checkins.event_id
+      and safety_events.status = 'active'
+  )
+);
 
 create policy "safety_checkins_update_own"
 on public.safety_checkins for update
 to authenticated
 using (user_id = auth.uid())
-with check (user_id = auth.uid());
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1 from public.safety_events
+    where safety_events.id = safety_checkins.event_id
+      and safety_events.status = 'active'
+  )
+);
 
 create policy "board_tasks_select_authenticated"
 on public.board_tasks for select
@@ -1134,7 +1178,16 @@ using (user_id = auth.uid() or app_private.has_role(array['board_member', 'admin
 create policy "parking_permits_insert_own"
 on public.parking_permits for insert
 to authenticated
-with check (user_id = auth.uid() and status = 'pending');
+with check (
+  user_id = auth.uid()
+  and status = 'pending'
+  and exists (
+    select 1 from public.parking_spaces
+    where parking_spaces.id = parking_permits.space_id
+      and parking_spaces.is_active = true
+      and parking_spaces.is_available = true
+  )
+);
 
 create policy "parking_permits_manager_update"
 on public.parking_permits for update
@@ -1463,6 +1516,16 @@ to authenticated
 using (app_private.has_role(array['board_member', 'admin']::public.app_role[]))
 with check (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
 
+create policy "activity_logs_manager_select"
+on public.activity_logs for select
+to authenticated
+using (app_private.has_role(array['board_member', 'admin']::public.app_role[]));
+
+create policy "activity_logs_authenticated_insert"
+on public.activity_logs for insert
+to authenticated
+with check (actor_id = auth.uid());
+
 insert into public.rooms (name, capacity, notes)
 values
   ('集会室 A', 24, '理事会・小規模会議向け'),
@@ -1507,3 +1570,9 @@ grant select, insert, update on public.meeting_attendances to authenticated;
 grant select, insert, update on public.meeting_votes to authenticated;
 grant select, insert, update on public.inspection_plans to authenticated;
 grant select, insert, update on public.inspection_records to authenticated;
+grant select, insert on public.activity_logs to authenticated;
+
+revoke execute on function public.update_own_pending_booking(uuid, uuid, timestamptz, timestamptz, text) from public;
+revoke execute on function public.cancel_own_pending_booking(uuid) from public;
+grant execute on function public.update_own_pending_booking(uuid, uuid, timestamptz, timestamptz, text) to authenticated;
+grant execute on function public.cancel_own_pending_booking(uuid) to authenticated;

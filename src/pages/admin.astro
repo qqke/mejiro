@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { Building2, Users } from "@lucide/astro";
+import { Building2, History, Users } from "@lucide/astro";
 ---
 
 <AppLayout title="管理" page="admin">
@@ -40,5 +40,29 @@ import { Building2, Users } from "@lucide/astro";
   <section class="panel" style="margin-top: 16px;">
     <h2><Users size={18} aria-hidden="true" /> ユーザー権限</h2>
     <div class="list" data-profile-list></div>
+  </section>
+
+  <section class="panel" style="margin-top: 16px;">
+    <h2><History size={18} aria-hidden="true" /> 操作履歴</h2>
+    <div class="activity-log-tools">
+      <label class="field">
+        <span>キーワード</span>
+        <input class="input" type="search" placeholder="内容・対象・担当者" data-activity-log-search />
+      </label>
+      <label class="field">
+        <span>操作</span>
+        <select class="select" data-activity-log-action>
+          <option value="all">すべて</option>
+          <option value="created">作成・登録</option>
+          <option value="approval">承認</option>
+          <option value="rejection">却下・差戻し</option>
+          <option value="completion">完了・返却</option>
+          <option value="closure">終了・中止</option>
+          <option value="archived">保管</option>
+        </select>
+      </label>
+      <p class="meta" data-activity-log-summary></p>
+    </div>
+    <div class="list compact-list" data-activity-log-list></div>
   </section>
 </AppLayout>

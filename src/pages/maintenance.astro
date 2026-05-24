@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { Plus, Wrench } from "@lucide/astro";
+import { Plus, Search, Wrench } from "@lucide/astro";
 ---
 
 <AppLayout title="修繕工事" page="maintenance">
@@ -74,6 +74,10 @@ import { Plus, Wrench } from "@lucide/astro";
         <button class="segment" type="button" data-maintenance-filter="in_progress">対応</button>
         <button class="segment" type="button" data-maintenance-filter="resolved">完了</button>
       </div>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 一覧を検索</span>
+        <input class="input" type="search" placeholder="件名・場所・内容" data-maintenance-search />
+      </label>
       <div class="list" data-maintenance-list></div>
     </div>
   </section>

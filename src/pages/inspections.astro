@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { Boxes, ClipboardCheck, Plus, Wrench } from "@lucide/astro";
+import { Boxes, ClipboardCheck, Plus, Search, Wrench } from "@lucide/astro";
 ---
 
 <AppLayout title="長期点検" page="inspections">
@@ -95,10 +95,18 @@ import { Boxes, ClipboardCheck, Plus, Wrench } from "@lucide/astro";
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <h2><Boxes size={18} aria-hidden="true" /> 点検計画</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 計画を検索</span>
+        <input class="input" type="search" placeholder="計画名・資産・場所" data-inspection-plan-search />
+      </label>
       <div class="list" data-inspection-plan-list></div>
     </div>
     <div class="panel">
       <h2><Wrench size={18} aria-hidden="true" /> 点検記録</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 記録を検索</span>
+        <input class="input" type="search" placeholder="計画名・資産・記録" data-inspection-record-search />
+      </label>
       <div class="list" data-inspection-record-list></div>
     </div>
   </section>

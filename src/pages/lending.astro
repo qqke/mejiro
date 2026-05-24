@@ -1,6 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { KeyRound, PackageCheck, Plus } from "@lucide/astro";
+import { KeyRound, PackageCheck, Plus, Search } from "@lucide/astro";
 ---
 
 <AppLayout title="鍵貸出" page="lending">
@@ -79,10 +79,18 @@ import { KeyRound, PackageCheck, Plus } from "@lucide/astro";
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <h2><PackageCheck size={18} aria-hidden="true" /> 貸出品一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 貸出品を検索</span>
+        <input class="input" type="search" placeholder="名称・種別・場所・メモ" data-lending-item-search />
+      </label>
       <div class="list" data-lending-item-list></div>
     </div>
     <div class="panel">
       <h2><KeyRound size={18} aria-hidden="true" /> 申請・貸出一覧</h2>
+      <label class="field list-search">
+        <span><Search size={14} aria-hidden="true" /> 申請を検索</span>
+        <input class="input" type="search" placeholder="用途・品目・状態・期限" data-lending-request-search />
+      </label>
       <div class="list" data-lending-request-list></div>
     </div>
   </section>

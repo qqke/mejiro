@@ -93,12 +93,14 @@ export async function waitForServer(url, timeoutMs = 30000) {
 }
 
 export async function waitForPath(page, predicate, timeoutMs = 20000) {
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    if (predicate(new URL(page.url()).pathname)) {
-      return;
-    }
-    await delay(250);
+  const matchesCurrentPath = () => predicate(new URL(page.url()).pathname);
+  if (matchesCurrentPath()) return;
+
+  try {
+    await page.waitForURL((url) => predicate(url.pathname), { timeout: timeoutMs });
+    return;
+  } catch {
+    if (matchesCurrentPath()) return;
   }
 
   throw new Error(`Timed out waiting for page path on ${page.url()}`);
@@ -160,7 +162,7 @@ export async function login(page, baseUrl, email, password) {
   await page.goto(`${baseUrl}/login/`, { waitUntil: "domcontentloaded" });
   await page.locator("#email").fill(email);
   await page.locator("#password").fill(password);
-  await page.locator("[data-login-form] button[type='submit']").click();
+  await page.locator("#password").press("Enter");
   await waitForPath(page, (pathname) => pathname === "/" || pathname === "");
 }
 

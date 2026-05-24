@@ -27,6 +27,7 @@
 - 管理员维护会议室和用户权限
 - 会议治理：会议登记、议案管理、出席/委任、投票和结果汇总
 - 长期点检：设备点检计划、点检记录、异常转修缮和资产状态联动
+- 操作履历：关键审批、保管、貸出和駐車状态变更会记录到管理员可查看的审计日志
 
 ## 版本范围
 
@@ -70,6 +71,12 @@ v20/v21 增加长期点检模块：设备点检计划、点检记录、异常转
 
 v24/v25 增加管理文書 Markdown CRDT 协作编辑：多人字符级合并、版履历、差分查看和浏览器端 PDF/打印视图。
 
+v26/v27 增加操作履历模块：关键创建、提交、发布和状态变更写入 `activity_logs`，管理员可在管理画面查看最近操作。
+v27/v28 补齐通知和回覧的目标角色枚举，支持主席、理事长定向发布。
+v28/v29 将意见募集回答、防災安否 check-in 的开放状态约束下沉到 RLS，避免绕过前端写入已关闭事项。
+v29/v30 将駐車・駐輪申请的空き区画约束下沉到 RLS，和貸出品申请的可用性校验保持一致。
+v30/v31 收紧会议室预约 RPC 的执行权限，只允许登录用户调用自己的待承认预约更新/取消函数。
+
 ## 用户来源
 
 本项目没有前台自助注册入口。用户账号由管理员在 Supabase Dashboard 的 Authentication / Users 中创建。
@@ -90,36 +97,32 @@ where id = 'AUTH_USER_UUID';
 
 | 现有版本 | 需要补跑的迁移 |
 | --- | --- |
-| v1 | `v2_v3` -> `v4_v5` -> `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v3 | `v4_v5` -> `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v5 | `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v7 | `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v9 | `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v11 | `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v13 | `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v15 | `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v17 | `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v19 | `v20_v21` -> `v22_v23` -> `v24_v25` |
-| v21 | `v22_v23` -> `v24_v25` |
-| v23 | `v24_v25` |
+| v1 | `v2_v3` -> `v4_v5` -> `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v3 | `v4_v5` -> `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v5 | `v6_v7` -> `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v7 | `v8_v9` -> `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v9 | `v10_v11` -> `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v11 | `v12_v13` -> `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v13 | `v14_v15` -> `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v15 | `v16_v17` -> `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v17 | `v18_v19` -> `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v19 | `v20_v21` -> `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v21 | `v22_v23` -> `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v23 | `v24_v25` -> `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v25 | `v26_v27` -> `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v27 | `v27_v28` -> `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v28 | `v28_v29` -> `v29_v30` -> `v30_v31` |
+| v29 | `v29_v30` -> `v30_v31` |
+| v30 | `v30_v31` |
 
 1. 创建 Supabase 项目。
 2. 新项目在 Supabase SQL Editor 中执行 `supabase/schema.sql`。
-3. 已经部署过 v1 的项目，依次执行 `supabase/v2_v3_migration.sql`、`supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-4. 已经部署到 v3 的项目，依次执行 `supabase/v4_v5_migration.sql`、`supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-5. 已经部署到 v5 的项目，依次执行 `supabase/v6_v7_migration.sql`、`supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-6. 已经部署到 v7 的项目，依次执行 `supabase/v8_v9_migration.sql`、`supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-7. 已经部署到 v9 的项目，依次执行 `supabase/v10_v11_migration.sql`、`supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-8. 已经部署到 v11 的项目，依次执行 `supabase/v12_v13_migration.sql`、`supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-9. 已经部署到 v13 的项目，依次执行 `supabase/v14_v15_migration.sql`、`supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-10. 已经部署到 v15 的项目，只需要执行 `supabase/v16_v17_migration.sql`、`supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-11. 已经部署到 v17 的项目，只需要执行 `supabase/v18_v19_migration.sql`、`supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-12. 已经部署到 v19 的项目，只需要执行 `supabase/v20_v21_migration.sql`、`supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-13. 已经部署到 v21 的项目，只需要执行 `supabase/v22_v23_migration.sql`、`supabase/v24_v25_migration.sql`。
-14. 参考 `.env.example` 创建本地 `.env`。
-15. 在 Supabase Dashboard 的 Authentication / Users 中创建用户。不要手动插入 `auth.users`，缺少 Auth identity 或必填字段会导致登录返回 `Database error querying schema`。
-16. 按需在 `public.profiles` 中调整用户角色，管理员需要 `role = 'admin'`。
-17. 如果登录页显示 Supabase Auth 数据库设置错误，请在 Supabase SQL Editor 中执行 `supabase/auth_login_diagnostics.sql`，并同时查看 Dashboard 的 Auth Logs 和 Postgres Logs。
+3. 已经部署过 v1 的项目，依次执行上表对应的所有 migration SQL。
+4. 已经部署到 v3 及之后版本的项目，同样按上表从对应版本继续补跑 migration SQL。
+5. 参考 `.env.example` 创建本地 `.env`。
+6. 在 Supabase Dashboard 的 Authentication / Users 中创建用户。不要手动插入 `auth.users`，缺少 Auth identity 或必填字段会导致登录返回 `Database error querying schema`。
+7. 按需在 `public.profiles` 中调整用户角色，管理员需要 `role = 'admin'`。
+8. 如果登录页显示 Supabase Auth 数据库设置错误，请在 Supabase SQL Editor 中执行 `supabase/auth_login_diagnostics.sql`，并同时查看 Dashboard 的 Auth Logs 和 Postgres Logs。
 
 ## 环境变量
 

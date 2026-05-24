@@ -244,7 +244,7 @@ function seedState() {
         title: "保守契約A",
         status: "active",
         start_date: "2026-04-01",
-        end_date: "2026-12-31",
+        end_date: "2026-06-10",
         amount: 500000,
         created_by: "admin-user",
         created_at: iso("2026-04-01T00:00:00Z"),
@@ -474,6 +474,7 @@ function seedState() {
       },
     ],
     inspection_records: [],
+    activity_logs: [],
   };
 
   return state;
@@ -570,7 +571,7 @@ function enrichRow(state, table, row) {
     next.parking_spaces = space ? { code: space.code, kind: space.kind, location: space.location } : null;
   } else if (table === "circular_acknowledgements") {
     const circular = state.circulars.find((item) => item.id === row.circular_id);
-    next.circulars = circular ? { title: circular.title, kind: circular.kind } : null;
+    next.circulars = circular ? { title: circular.title, kind: circular.kind, target_role: circular.target_role } : null;
   } else if (table === "lending_requests") {
     const item = state.lending_items.find((entry) => entry.id === row.item_id);
     next.lending_items = item ? { name: item.name, kind: item.kind, location: item.location } : null;
@@ -588,6 +589,9 @@ function enrichRow(state, table, row) {
     const asset = state.asset_items.find((item) => item.id === row.asset_id);
     next.inspection_plans = plan ? { title: plan.title } : null;
     next.asset_items = asset ? { name: asset.name } : null;
+  } else if (table === "activity_logs") {
+    const profile = state.profiles.find((item) => item.id === row.actor_id);
+    next.profiles = profile ? { display_name: profile.display_name } : null;
   }
   return next;
 }
@@ -621,12 +625,19 @@ function uniqueMatch(table, payload, row) {
   return false;
 }
 
+function isUuid(value) {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function applyInsert(state, table, payload) {
   const items = Array.isArray(payload) ? payload : [payload];
   const inserted = [];
 
   for (const item of items) {
     const row = clone(item);
+    if (table === "activity_logs" && row.entity_id != null && !isUuid(row.entity_id)) {
+      throw new Error(`invalid uuid for activity_logs.entity_id: ${row.entity_id}`);
+    }
     if (!row.id) row.id = nextId(state, table.replace(/_.*$/, ""));
     if (table === "surveys" && row.is_open === undefined) row.is_open = true;
     if (table === "meeting_sessions" && row.status === undefined) row.status = "open";
