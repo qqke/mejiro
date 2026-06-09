@@ -182,6 +182,14 @@ export async function expectText(page, selector, expected, label) {
 }
 
 export async function maybeFirstVisibleRole(page) {
-  const role = (await page.locator("[data-user-role]").textContent())?.trim() ?? "";
+  const startedAt = Date.now();
+  let role = "";
+
+  while (Date.now() - startedAt < 10000) {
+    role = (await page.locator("[data-user-role]").textContent())?.trim() ?? "";
+    if (role && role !== "ログイン確認中") return role;
+    await delay(100);
+  }
+
   return role;
 }
