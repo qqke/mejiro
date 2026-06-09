@@ -10,6 +10,11 @@ import { KeyRound, PackageCheck, Plus, Search } from "@lucide/astro";
       <h1>鍵・備品貸出</h1>
       <p class="lead">集会室の鍵、清掃用具、防災備品、書類などの貸出申請、返却期限、返却状況を管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-lending-item-form]">
+        <Plus size={16} aria-hidden="true" />貸出品を登録
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="鍵備品貸出指標">

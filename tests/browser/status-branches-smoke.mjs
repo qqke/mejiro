@@ -44,6 +44,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   await page.goto(`${baseUrl}/tasks/`, { waitUntil: "domcontentloaded" });
   await page.locator("body[data-page='tasks']").waitFor({ state: "attached", timeout: 20000 });
+  await page.locator("[data-reveal-target='[data-task-form]']").click();
   await page.locator("#task-title").fill("中止タスク");
   await page.locator("#task-description").fill("中止分岐の確認");
   await page.locator("#task-priority").selectOption("high");
@@ -95,6 +96,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
   await page.locator("body[data-page='meetings']").waitFor({ state: "attached", timeout: 20000 });
+  await page.locator("[data-reveal-target='[data-meeting-form]']").click();
   await page.locator("#meeting-title").fill("中止会議");
   await page.locator("#meeting-kind").selectOption("board");
   await page.locator("#meeting-scheduled").fill("2026-05-24T18:00");

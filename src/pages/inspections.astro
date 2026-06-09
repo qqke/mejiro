@@ -10,6 +10,14 @@ import { Boxes, ClipboardCheck, Plus, Search, Wrench } from "@lucide/astro";
       <h1>長期点検</h1>
       <p class="lead">共用設備、備品、防災用品の点検計画と記録を管理し、異常時は修繕依頼へつなげます。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-inspection-plan-form]">
+        <Plus size={16} aria-hidden="true" />点検計画を作成
+      </button>
+      <button class="button secondary" type="button" data-reveal-target="[data-inspection-record-form]">
+        <ClipboardCheck size={16} aria-hidden="true" />点検を記録
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="長期点検指標">

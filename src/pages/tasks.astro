@@ -10,6 +10,11 @@ import { ClipboardCheck, Plus } from "@lucide/astro";
       <h1>理事タスク</h1>
       <p class="lead">会議後の確認事項、修繕調整、業者連絡、住民対応などの担当と期限を管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-task-form]">
+        <Plus size={16} aria-hidden="true" />タスクを作成
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="タスク指標">

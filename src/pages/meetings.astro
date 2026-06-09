@@ -10,6 +10,14 @@ import { CalendarDays, ClipboardList, Plus, Search, Vote } from "@lucide/astro";
       <h1>会議治理</h1>
       <p class="lead">総会、理事会、委員会の開催、議案、出席・委任、投票結果をまとめて管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-meeting-form]">
+        <Plus size={16} aria-hidden="true" />会議を作成
+      </button>
+      <button class="button secondary" type="button" data-reveal-target="[data-agenda-form]">
+        <ClipboardList size={16} aria-hidden="true" />議案を追加
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="会議治理指標">

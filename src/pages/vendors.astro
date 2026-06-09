@@ -10,6 +10,14 @@ import { FileSignature, Plus, Search, Store } from "@lucide/astro";
       <h1>業者契約</h1>
       <p class="lead">管理会社、清掃会社、点検業者、工事業者との連絡先と契約期間を一元管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-vendor-form]">
+        <Plus size={16} aria-hidden="true" />業者を登録
+      </button>
+      <button class="button secondary" type="button" data-reveal-target="[data-contract-form]">
+        <FileSignature size={16} aria-hidden="true" />契約を登録
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="業者指標">

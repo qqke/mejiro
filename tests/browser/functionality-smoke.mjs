@@ -46,6 +46,9 @@ async function waitForCondition(condition, label) {
 
 async function fillSubmit(page, selector, fields) {
   const formLocator = page.locator(selector);
+  if ((await formLocator.evaluate((element) => element.classList.contains("hidden")))) {
+    await page.locator(`[data-reveal-target="${selector}"]`).click();
+  }
   for (const [field, value] of Object.entries(fields)) {
     const control = formLocator.locator(`[name="${field}"]`);
     const tag = await control.evaluate((element) => element.tagName.toLowerCase());
@@ -56,6 +59,14 @@ async function fillSubmit(page, selector, fields) {
     }
   }
   await formLocator.locator("button[type='submit']").click();
+}
+
+function currentMonthEventCount(events) {
+  const now = new Date();
+  return events.filter((event) => {
+    const start = new Date(event.start_at);
+    return start.getFullYear() === now.getFullYear() && start.getMonth() === now.getMonth();
+  }).length;
 }
 
 async function clickAndConfirm(page, action, expectedMessage) {
@@ -88,7 +99,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   await expectText(page, "[data-metric='pending-bookings']", "2", "home pending bookings");
   await expectText(page, "[data-metric='unread-notices']", "1", "home unread notices");
-  await expectText(page, "[data-metric='month-events']", "1", "home month events");
+  await expectText(page, "[data-metric='month-events']", String(currentMonthEventCount(backend.state.events)), "home month events");
   await expectText(page, "[data-metric='home-actions']", "8", "home actionable work metric");
   await expectText(page, "[data-metric='home-risks']", "6", "home risk metric");
   assert((await page.locator("[data-home-actions] .list-item").filter({ hasText: "会議室予約の承認" }).count()) === 1, "home should surface pending booking approvals");

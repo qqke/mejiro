@@ -10,6 +10,11 @@ import { CalendarPlus } from "@lucide/astro";
       <h1>年間行事</h1>
       <p class="lead">清掃、総会、防災訓練など、年間の管理組合イベントを一覧できます。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-event-form]">
+        <CalendarPlus size={16} aria-hidden="true" />行事を追加
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-2">

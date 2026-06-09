@@ -10,6 +10,11 @@ import { HandCoins, Plus, Search } from "@lucide/astro";
       <h1>収支台帳</h1>
       <p class="lead">管理費、修繕積立金、工事費、備品購入などの収入・支出を共有します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-finance-form]">
+        <Plus size={16} aria-hidden="true" />台帳へ記録
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="収支指標">

@@ -10,6 +10,11 @@ import { CheckCircle2, ClipboardList, Plus, Search } from "@lucide/astro";
       <h1>当番・巡回</h1>
       <p class="lead">清掃当番、共用部巡回、植栽確認、会議準備などの日付、担当、完了状況を管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-duty-form]">
+        <Plus size={16} aria-hidden="true" />当番を作成
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="当番巡回指標">

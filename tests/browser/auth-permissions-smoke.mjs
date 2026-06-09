@@ -101,14 +101,18 @@ async function runBoardAccessCheck() {
 
     await page.goto(`${baseUrl}/meetings/`, { waitUntil: "domcontentloaded" });
     await page.locator("body[data-page='meetings']").waitFor({ state: "attached", timeout: 20000 });
+    assert((await page.locator("[data-reveal-target='[data-meeting-form]']").count()) === 1, "board member should see meeting create action");
+    assert((await page.locator("[data-reveal-target='[data-agenda-form]']").count()) === 1, "board member should see agenda create action");
+    await page.locator("[data-reveal-target='[data-meeting-form]']").click();
+    await page.locator("[data-reveal-target='[data-agenda-form]']").click();
     await waitForCondition(async () => {
       const className = await page.locator("[data-meeting-form]").getAttribute("class");
       return Boolean(className && !className.includes("hidden"));
-    }, "board meeting form visibility");
+    }, "board meeting form reveal");
     await waitForCondition(async () => {
       const className = await page.locator("[data-agenda-form]").getAttribute("class");
       return Boolean(className && !className.includes("hidden"));
-    }, "board agenda form visibility");
+    }, "board agenda form reveal");
     assert((await page.locator("[data-attendance-form]").count()) === 1, "board member should see attendance form");
     assert((await page.locator("[data-vote-form]").count()) === 1, "board member should see vote form");
 

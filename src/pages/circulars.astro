@@ -10,6 +10,11 @@ import { CheckCircle2, Newspaper, Plus, Search } from "@lucide/astro";
       <h1>回覧・配布物</h1>
       <p class="lead">回覧板、配布資料、規約改定案、行事案内の対象者と確認状況をまとめて管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-circular-form]">
+        <Plus size={16} aria-hidden="true" />回覧を作成
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="回覧配布指標">

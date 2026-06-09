@@ -10,6 +10,11 @@ import { Boxes, Plus, Search } from "@lucide/astro";
       <h1>資産台帳</h1>
       <p class="lead">共用設備、備品、防災用品などの保有状況、点検予定、状態を管理します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-asset-form]">
+        <Plus size={16} aria-hidden="true" />資産を登録
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="資産指標">

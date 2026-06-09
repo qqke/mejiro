@@ -1319,6 +1319,7 @@ async function init() {
   initSidebarMenu();
   applyRoleNavigation();
   initGlobalSearch();
+  initRevealActions();
 
   qs("[data-action='sign-out']")?.addEventListener("click", async () => {
     await supabase!.auth.signOut();
@@ -1381,6 +1382,34 @@ function initSidebarMenu() {
 
 function applyRoleNavigation() {
   if (!isAdmin()) qs("[data-nav-group='admin']")?.remove();
+}
+
+function initRevealActions() {
+  qsa<HTMLButtonElement>("[data-reveal-target]").forEach((button) => {
+    const selector = button.dataset.revealTarget;
+    if (!selector) return;
+    const target = qs<HTMLElement>(selector);
+    if (!target) return;
+
+    button.setAttribute("aria-expanded", String(!target.classList.contains("hidden")));
+    button.addEventListener("click", () => {
+      target.classList.remove("hidden");
+      button.setAttribute("aria-expanded", "true");
+      button.hidden = true;
+      target.scrollIntoView({ block: "start", behavior: "smooth" });
+      target.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("input, select, textarea")?.focus();
+    });
+  });
+}
+
+function setManagedFormAvailability(selector: string, allowed: boolean) {
+  const form = qs<HTMLElement>(selector);
+  const trigger = qs<HTMLButtonElement>(`[data-reveal-target="${selector}"]`);
+  if (!form) return;
+  form.classList.add("hidden");
+  if (!trigger) return;
+  trigger.hidden = !allowed;
+  trigger.setAttribute("aria-expanded", "false");
 }
 
 function initGlobalSearch() {
@@ -2355,7 +2384,7 @@ async function checkBookingOverlap(roomId: string, startAt: string, endAt: strin
 }
 
 async function initNotices() {
-  qs("[data-notice-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-notice-form]", canManage());
   await renderNoticesPage();
 
   qs<HTMLFormElement>("[data-notice-form]")?.addEventListener("submit", async (event) => {
@@ -2433,7 +2462,7 @@ async function countUnreadNotices() {
 }
 
 async function initEvents() {
-  qs("[data-event-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-event-form]", canManage());
   await renderEventsPage();
 
   qs("[data-action='prev-event-month']")?.addEventListener("click", async () => {
@@ -2505,7 +2534,7 @@ function renderEventList(selector: string, events: EventItem[]) {
 }
 
 async function initDocuments() {
-  qs("[data-document-form]")?.classList.toggle("hidden", !canManageDocuments());
+  setManagedFormAvailability("[data-document-form]", canManageDocuments());
   await renderDocumentsPage();
 
   qs<HTMLButtonElement>("[data-document-close]")?.addEventListener("click", () => closeDocumentWorkspace());
@@ -3425,7 +3454,7 @@ async function updateMaintenanceStatus(id: string, status: MaintenanceStatus) {
 }
 
 async function initFinance() {
-  qs("[data-finance-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-finance-form]", canManage());
   const dateInput = qs<HTMLInputElement>("#finance-entry-date");
   if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
   await renderFinancePage();
@@ -3534,7 +3563,7 @@ function renderFinanceList(entries: FinanceEntry[]) {
 }
 
 async function initAssets() {
-  qs("[data-asset-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-asset-form]", canManage());
   await renderAssetsPage();
 
   qsa<HTMLButtonElement>("[data-asset-filter]").forEach((button) => {
@@ -3660,8 +3689,8 @@ async function updateAssetStatus(id: string, status: AssetStatus) {
 }
 
 async function initVendors() {
-  qs("[data-vendor-form]")?.classList.toggle("hidden", !canManage());
-  qs("[data-contract-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-vendor-form]", canManage());
+  setManagedFormAvailability("[data-contract-form]", canManage());
   await renderVendorsPage();
 
   qs<HTMLInputElement>("[data-vendor-search]")?.addEventListener("input", (event) => {
@@ -3918,7 +3947,7 @@ function renderResidentList(profiles: Profile[]) {
 }
 
 async function initSurveys() {
-  qs("[data-survey-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-survey-form]", canManage());
   await renderSurveysPage();
 
   qs<HTMLFormElement>("[data-survey-form]")?.addEventListener("submit", async (event) => {
@@ -4051,7 +4080,7 @@ function isSurveyOpen(survey: Survey) {
 }
 
 async function initSafety() {
-  qs("[data-safety-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-safety-form]", canManage());
   await renderSafetyPage();
 
   qs<HTMLFormElement>("[data-safety-form]")?.addEventListener("submit", async (event) => {
@@ -4166,7 +4195,7 @@ async function updateSafetyEventStatus(id: string, status: SafetyEventStatus) {
 }
 
 async function initTasks() {
-  qs("[data-task-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-task-form]", canManage());
   await renderTasksPage();
 
   qsa<HTMLButtonElement>("[data-task-filter]").forEach((button) => {
@@ -4273,7 +4302,7 @@ async function updateTaskStatus(id: string, status: BoardTaskStatus) {
 }
 
 async function initParking() {
-  qs("[data-parking-space-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-parking-space-form]", canManage());
   await renderParkingPage();
 
   qs<HTMLInputElement>("[data-parking-space-search]")?.addEventListener("input", (event) => {
@@ -4603,7 +4632,7 @@ async function updateResidentRequestStatus(id: string, status: ResidentRequestSt
 }
 
 async function initCirculars() {
-  qs("[data-circular-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-circular-form]", canManage());
   await renderCircularsPage();
 
   qs<HTMLInputElement>("[data-circular-search]")?.addEventListener("input", async (event) => {
@@ -4769,7 +4798,7 @@ async function updateCircularStatus(id: string, status: CircularStatus) {
 }
 
 async function initLending() {
-  qs("[data-lending-item-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-lending-item-form]", canManage());
   await renderLendingPage();
 
   qs<HTMLInputElement>("[data-lending-item-search]")?.addEventListener("input", async (event) => {
@@ -4979,7 +5008,7 @@ async function updateLendingRequestStatus(id: string, status: LendingRequestStat
 }
 
 async function initDuties() {
-  qs("[data-duty-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-duty-form]", canManage());
   await renderDutiesPage();
 
   qsa<HTMLButtonElement>("[data-duty-filter]").forEach((button) => {
@@ -5138,7 +5167,7 @@ async function updateDutyStatus(id: string, status: DutyStatus) {
 }
 
 async function initWaste() {
-  qs("[data-waste-schedule-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-waste-schedule-form]", canManage());
   await renderWastePage();
 
   qs<HTMLInputElement>("[data-waste-schedule-search]")?.addEventListener("input", async (event) => {
@@ -5328,8 +5357,8 @@ async function updateBulkyWasteStatus(id: string, status: BulkyWasteStatus) {
 }
 
 async function initMeetings() {
-  qs("[data-meeting-form]")?.classList.toggle("hidden", !canManage());
-  qs("[data-agenda-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-meeting-form]", canManage());
+  setManagedFormAvailability("[data-agenda-form]", canManage());
   await renderMeetingsPage();
 
   qs<HTMLInputElement>("[data-meeting-search]")?.addEventListener("input", async (event) => {
@@ -5589,8 +5618,8 @@ async function updateMeetingStatus(id: string, status: MeetingStatus) {
 }
 
 async function initInspections() {
-  qs("[data-inspection-plan-form]")?.classList.toggle("hidden", !canManage());
-  qs("[data-inspection-record-form]")?.classList.toggle("hidden", !canManage());
+  setManagedFormAvailability("[data-inspection-plan-form]", canManage());
+  setManagedFormAvailability("[data-inspection-record-form]", canManage());
   await renderInspectionsPage();
 
   qs<HTMLInputElement>("[data-inspection-plan-search]")?.addEventListener("input", async (event) => {

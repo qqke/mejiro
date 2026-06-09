@@ -10,6 +10,11 @@ import { CalendarDays, Plus, Recycle, Search } from "@lucide/astro";
       <h1>ごみ・資源</h1>
       <p class="lead">燃えるごみ、資源、粗大ごみ、有害ごみの収集日、出し方、粗大ごみ申請をまとめます。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-waste-schedule-form]">
+        <Plus size={16} aria-hidden="true" />収集ルールを登録
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-3" aria-label="ごみ資源指標">

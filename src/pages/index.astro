@@ -1,6 +1,19 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { AlertTriangle, Bell, Building2, CalendarDays, ClipboardList, ListChecks } from "@lucide/astro";
+import {
+  AlertTriangle,
+  Bell,
+  Building2,
+  CalendarDays,
+  CircleParking,
+  ClipboardList,
+  KeyRound,
+  ListChecks,
+  MessageSquareWarning,
+  Newspaper,
+  Recycle,
+  Wrench,
+} from "@lucide/astro";
 const base = import.meta.env.BASE_URL;
 ---
 
@@ -28,11 +41,61 @@ const base = import.meta.env.BASE_URL;
     </div>
   </section>
 
+  <section class="grid cols-2 dashboard-priority" aria-label="よく使う操作">
+    <div class="panel">
+      <div class="list-row">
+        <h2><ListChecks size={18} aria-hidden="true" /> よく使う操作</h2>
+      </div>
+      <div class="quick-actions" data-quick-actions>
+        <a class="quick-action" href={`${base}rooms/`}>
+          <Building2 size={18} aria-hidden="true" />
+          <span>会議室予約</span>
+        </a>
+        <a class="quick-action" href={`${base}maintenance/`}>
+          <Wrench size={18} aria-hidden="true" />
+          <span>修繕依頼</span>
+        </a>
+        <a class="quick-action" href={`${base}requests/`}>
+          <MessageSquareWarning size={18} aria-hidden="true" />
+          <span>相談送信</span>
+        </a>
+        <a class="quick-action" href={`${base}circulars/`}>
+          <Newspaper size={18} aria-hidden="true" />
+          <span>回覧確認</span>
+        </a>
+        <a class="quick-action" href={`${base}waste/`}>
+          <Recycle size={18} aria-hidden="true" />
+          <span>粗大ごみ申請</span>
+        </a>
+        <a class="quick-action" href={`${base}parking/`}>
+          <CircleParking size={18} aria-hidden="true" />
+          <span>駐車・駐輪申請</span>
+        </a>
+        <a class="quick-action" href={`${base}lending/`}>
+          <KeyRound size={18} aria-hidden="true" />
+          <span>鍵・備品貸出</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="panel" data-my-work>
+      <div class="list-row">
+        <h2><ClipboardList size={18} aria-hidden="true" /> 自分の未完了</h2>
+        <strong class="amount" data-metric="home-actions">0</strong>
+      </div>
+      <p class="meta">未確認、未処理、期限が近い事項を下の「今日の対応」にまとめています。</p>
+      <div class="work-summary">
+        <a href={`${base}circulars/`}>回覧確認</a>
+        <a href={`${base}duties/`}>当番確認</a>
+        <a href={`${base}surveys/`}>意見回答</a>
+      </div>
+    </div>
+  </section>
+
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <div class="list-row">
         <h2><ListChecks size={18} aria-hidden="true" /> 今日の対応</h2>
-        <strong class="amount" data-metric="home-actions">0</strong>
       </div>
       <div class="list compact-list" data-home-actions></div>
     </div>

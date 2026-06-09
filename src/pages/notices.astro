@@ -10,6 +10,11 @@ import { Bell, Plus } from "@lucide/astro";
       <h1>通知・課題</h1>
       <p class="lead">管理組合からの通知、会議案内、検討課題を確認します。</p>
     </div>
+    <div class="page-actions">
+      <button class="button" type="button" data-reveal-target="[data-notice-form]">
+        <Plus size={16} aria-hidden="true" />通知を発行
+      </button>
+    </div>
   </header>
 
   <section class="grid cols-2">
