@@ -851,6 +851,30 @@ await withPreviewPage(async ({ page, baseUrl }) => {
     () => backend.state.activity_logs.some((log) => log.entity_type === "room" && log.action === "created" && /テスト会議室/.test(log.detail ?? "")),
     "room creation activity log",
   );
+  await page.locator("[data-room-edit='room-1']").click();
+  await expectText(page, "[data-room-form-title]", "会議室を編集", "room edit form title");
+  assert((await page.locator("#room-name").inputValue()) === "集会室A", "room edit should populate name");
+  await page.locator("#room-name").fill("集会室A 改");
+  await page.locator("#room-capacity").fill("32");
+  await page.locator("#room-notes").fill("編集済み");
+  await page.locator("[data-room-form] button[type='submit']").click();
+  await waitForCondition(() => backend.state.rooms.find((room) => room.id === "room-1")?.name === "集会室A 改", "room update");
+  await waitForCondition(
+    () => backend.state.activity_logs.some((log) => log.entity_type === "room" && log.action === "updated" && /集会室A 改/.test(log.detail ?? "")),
+    "room update activity log",
+  );
+  await expectText(page, "[data-room-status]", "会議室を更新しました。", "room update status");
+  page.once("dialog", async (dialog) => {
+    assert(dialog.message().includes("削除"), "room delete should ask for confirmation");
+    await dialog.accept();
+  });
+  await page.locator("[data-room-delete='room-1']").click();
+  await waitForCondition(() => backend.state.rooms.find((room) => room.id === "room-1")?.is_active === false, "room soft delete");
+  await waitForCondition(
+    () => backend.state.activity_logs.some((log) => log.entity_type === "room" && log.action === "deleted" && /集会室A 改/.test(log.detail ?? "")),
+    "room delete activity log",
+  );
+  assert((await page.locator("[data-room-list]").filter({ hasText: "集会室A 改" }).count()) === 0, "deleted room should leave active room list");
   const residentRoleSelect = page.locator("[data-role-select='resident-user']");
   assert((await residentRoleSelect.locator("option[value='chair']").count()) === 1, "admin role select should include chair role");
   assert((await residentRoleSelect.locator("option[value='president']").count()) === 1, "admin role select should include president role");

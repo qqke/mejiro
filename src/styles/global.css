@@ -1369,6 +1369,26 @@ h3 {
     width: 100%;
   }
 
+  .mobile-compact-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px;
+  }
+
+  .mobile-compact-metrics .metric {
+    gap: 6px;
+    min-height: 76px;
+    padding: 12px 10px;
+  }
+
+  .mobile-compact-metrics .metric span {
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .mobile-compact-metrics .metric strong {
+    font-size: 24px;
+  }
+
   .quick-actions {
     grid-template-columns: 1fr;
   }

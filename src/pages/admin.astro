@@ -14,7 +14,8 @@ import { Building2, History, Users } from "@lucide/astro";
 
   <section class="grid cols-2">
     <form class="panel grid" data-room-form>
-      <h2><Building2 size={18} aria-hidden="true" /> 会議室を追加</h2>
+      <h2 data-room-form-title><Building2 size={18} aria-hidden="true" /> 会議室を追加</h2>
+      <input type="hidden" name="room_id" data-room-id />
       <div class="field">
         <label for="room-name">会議室名</label>
         <input class="input" id="room-name" name="name" required />
@@ -27,7 +28,10 @@ import { Building2, History, Users } from "@lucide/astro";
         <label for="room-notes">備考</label>
         <textarea class="textarea" id="room-notes" name="notes"></textarea>
       </div>
-      <button class="button" type="submit">追加する</button>
+      <div class="toolbar">
+        <button class="button" type="submit" data-room-submit>追加する</button>
+        <button class="button secondary hidden" type="button" data-room-edit-cancel>編集を取消</button>
+      </div>
       <p class="status" data-room-status></p>
     </form>
 

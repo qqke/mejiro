@@ -5844,29 +5844,74 @@ async function initAdmin() {
   await Promise.all([renderAdminRooms(), renderProfiles(), renderActivityLogs()]);
   qs<HTMLInputElement>("[data-activity-log-search]")?.addEventListener("input", renderActivityLogList);
   qs<HTMLSelectElement>("[data-activity-log-action]")?.addEventListener("change", renderActivityLogList);
+  qs<HTMLButtonElement>("[data-room-edit-cancel]")?.addEventListener("click", resetRoomForm);
 
   qs<HTMLFormElement>("[data-room-form]")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formElement = event.currentTarget;
     if (!(formElement instanceof HTMLFormElement)) return;
     const form = new FormData(formElement);
+    const roomId = String(form.get("room_id") || "");
     const roomName = String(form.get("name"));
-    const { data: createdRoom, error } = await supabase!.from("rooms").insert({
+    const payload = {
       name: roomName,
       capacity: Number(form.get("capacity") || 0),
       notes: String(form.get("notes") || ""),
-      is_active: true,
-    }).select("id").single();
+    };
+    const { data: savedRoom, error } = roomId
+      ? await supabase!.from("rooms").update(payload).eq("id", roomId).select("id").single()
+      : await supabase!.from("rooms").insert({
+          ...payload,
+          is_active: true,
+        }).select("id").single();
     if (error) {
       setStatus("[data-room-status]", error.message, true);
       return;
     }
     formElement.reset();
-    setStatus("[data-room-status]", "会議室を追加しました。");
-    await recordActivity("room", createdRoom?.id ?? roomName, "created", `会議室 ${roomName} を追加しました。`);
+    resetRoomForm();
+    setStatus("[data-room-status]", roomId ? "会議室を更新しました。" : "会議室を追加しました。");
+    await recordActivity("room", savedRoom?.id ?? roomId ?? roomName, roomId ? "updated" : "created", roomId ? `会議室 ${roomName} を更新しました。` : `会議室 ${roomName} を追加しました。`);
     await renderAdminRooms();
     await renderActivityLogs();
   });
+}
+
+function resetRoomForm() {
+  const form = qs<HTMLFormElement>("[data-room-form]");
+  if (!form) return;
+  form.reset();
+  qs<HTMLInputElement>("[data-room-id]")!.value = "";
+  setText("[data-room-form-title]", "会議室を追加");
+  setText("[data-room-submit]", "追加する");
+  qs("[data-room-edit-cancel]")?.classList.add("hidden");
+}
+
+function startRoomEdit(room: Room) {
+  const form = qs<HTMLFormElement>("[data-room-form]");
+  if (!form) return;
+  qs<HTMLInputElement>("[data-room-id]")!.value = room.id;
+  qs<HTMLInputElement>("#room-name")!.value = room.name;
+  qs<HTMLInputElement>("#room-capacity")!.value = String(room.capacity ?? 0);
+  qs<HTMLTextAreaElement>("#room-notes")!.value = room.notes ?? "";
+  setText("[data-room-form-title]", "会議室を編集");
+  setText("[data-room-submit]", "保存する");
+  qs("[data-room-edit-cancel]")?.classList.remove("hidden");
+  form.scrollIntoView({ block: "start", behavior: "smooth" });
+  qs<HTMLInputElement>("#room-name")?.focus();
+}
+
+async function deleteRoom(room: Room) {
+  if (!confirmAction(`${room.name} を削除しますか？過去の予約履歴は残ります。`)) return;
+  const { error } = await supabase!.from("rooms").update({ is_active: false }).eq("id", room.id);
+  if (error) {
+    showErrorToast(error.message);
+    return;
+  }
+  await recordActivity("room", room.id, "deleted", `会議室 ${room.name} を削除しました。`);
+  resetRoomForm();
+  await renderAdminRooms();
+  await renderActivityLogs();
 }
 
 async function renderActivityLogs() {
@@ -6000,7 +6045,7 @@ function renderActivityLogList() {
 }
 
 async function renderAdminRooms() {
-  const { data } = await supabase!.from("rooms").select("*").order("name");
+  const { data } = await supabase!.from("rooms").select("*").eq("is_active", true).order("name");
   const rooms = (data ?? []) as Room[];
   const container = qs("[data-room-list]");
   if (!container) return;
@@ -6009,13 +6054,34 @@ async function renderAdminRooms() {
         .map(
           (room) => `
             <article class="list-item">
-              <strong>${escapeHtml(room.name)}</strong>
-              <p class="meta">定員 ${room.capacity ?? "-"} / ${escapeHtml(room.notes)}</p>
+              <div class="list-row">
+                <div>
+                  <strong>${escapeHtml(room.name)}</strong>
+                  <p class="meta">定員 ${room.capacity ?? "-"} / ${escapeHtml(room.notes)}</p>
+                </div>
+                <div class="toolbar">
+                  <button class="button secondary" type="button" data-room-edit="${room.id}">編集</button>
+                  <button class="button danger" type="button" data-room-delete="${room.id}">削除</button>
+                </div>
+              </div>
             </article>
           `,
         )
         .join("")
     : `<p class="meta">会議室は未登録です。</p>`;
+
+  qsa<HTMLButtonElement>("[data-room-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const room = rooms.find((item) => item.id === button.dataset.roomEdit);
+      if (room) startRoomEdit(room);
+    });
+  });
+  qsa<HTMLButtonElement>("[data-room-delete]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const room = rooms.find((item) => item.id === button.dataset.roomDelete);
+      if (room) void deleteRoom(room);
+    });
+  });
 }
 
 async function renderProfiles() {

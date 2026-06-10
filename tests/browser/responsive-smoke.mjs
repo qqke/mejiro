@@ -27,6 +27,12 @@ await withPreviewPage(
     await page.goto(`${baseUrl}/inspections/`, { waitUntil: "domcontentloaded" });
     await page.locator("body[data-page='inspections']").waitFor({ state: "attached", timeout: 20000 });
     await expectNoHorizontalOverflow(page, "inspections");
+
+    await page.goto(`${baseUrl}/residents/`, { waitUntil: "domcontentloaded" });
+    await page.locator("body[data-page='residents']").waitFor({ state: "attached", timeout: 20000 });
+    await expectNoHorizontalOverflow(page, "residents");
+    const profileTop = await page.locator("[data-resident-profile-form]").evaluate((element) => element.getBoundingClientRect().top);
+    assert(profileTop < 560, `resident profile form should begin in the first mobile viewport, got top ${profileTop}px`);
   },
   { viewport: { width: 390, height: 844 } },
 );
