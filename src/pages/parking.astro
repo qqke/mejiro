@@ -48,6 +48,13 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
             <option value="motorbike">バイク置場</option>
           </select>
         </div>
+        <div class="field">
+          <label for="parking-assignment">配分方法</label>
+          <select class="select" id="parking-assignment" name="assignment_method">
+            <option value="first_come">先着</option>
+            <option value="lottery">抽選</option>
+          </select>
+        </div>
       </div>
       <div class="form-grid">
         <div class="field">
@@ -73,6 +80,13 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
         <label for="parking-vehicle">車両情報</label>
         <input class="input" id="parking-vehicle" name="vehicle_label" placeholder="車番・自転車色など" required />
       </div>
+      <div class="field">
+        <label for="parking-priority">優先区分</label>
+        <select class="select" id="parking-priority" name="priority">
+          <option value="primary">1台目</option>
+          <option value="secondary">2台目</option>
+        </select>
+      </div>
       <div class="form-grid">
         <div class="field">
           <label for="parking-start">利用開始</label>
@@ -85,6 +99,38 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
       </div>
       <button class="button" type="submit">申請する</button>
       <p class="status" data-parking-permit-status></p>
+    </form>
+
+    <form class="panel grid" data-parking-procedure-form>
+      <h2><CircleParking size={18} aria-hidden="true" /> 駐車手続き</h2>
+      <div class="field">
+        <label for="parking-procedure-permit">利用中の許可</label>
+        <select class="select" id="parking-procedure-permit" name="permit_id" required data-parking-procedure-permit-select></select>
+      </div>
+      <div class="field">
+        <label for="parking-procedure-kind">手続き</label>
+        <select class="select" id="parking-procedure-kind" name="kind">
+          <option value="vehicle_change">車両変更</option>
+          <option value="return_notice">返還届</option>
+          <option value="certificate">車庫証明</option>
+        </select>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="parking-procedure-vehicle">変更後車両</label>
+          <input class="input" id="parking-procedure-vehicle" name="requested_vehicle_label" placeholder="車両変更時のみ" />
+        </div>
+        <div class="field">
+          <label for="parking-procedure-return">返還日</label>
+          <input class="input" id="parking-procedure-return" name="requested_return_date" type="date" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="parking-procedure-note">備考</label>
+        <input class="input" id="parking-procedure-note" name="note" />
+      </div>
+      <button class="button" type="submit">手続きを申請する</button>
+      <p class="status" data-parking-procedure-status></p>
     </form>
   </section>
 
@@ -104,6 +150,10 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
         <input class="input" type="search" placeholder="車両情報・区画番号" data-parking-permit-search />
       </label>
       <div class="list" data-parking-permit-list></div>
+    </div>
+    <div class="panel">
+      <h2><CircleParking size={18} aria-hidden="true" /> 駐車手続き一覧</h2>
+      <div class="list" data-parking-procedure-list></div>
     </div>
   </section>
 </AppLayout>

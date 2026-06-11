@@ -488,6 +488,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await fillSubmit(page, "[data-parking-space-form]", {
     code: "P-TEST",
     kind: "car",
+    assignment_method: "first_come",
     location: "南側",
     monthly_fee: "15000",
   });
@@ -498,6 +499,7 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   await fillSubmit(page, "[data-parking-permit-form]", {
     space_id: await firstOptionValue(page, "[data-parking-space-select]"),
     vehicle_label: "青い車",
+    priority: "primary",
     start_date: "2026-05-17",
     end_date: "2026-12-31",
   });
@@ -524,7 +526,80 @@ await withPreviewPage(async ({ page, baseUrl }) => {
     () => backend.state.activity_logs.some((log) => log.entity_type === "parking_permit" && log.action === "active"),
     "parking approval activity log",
   );
-  await clickAndConfirm(page, () => page.locator("[data-parking-end]").first().click(), "終了");
+  await fillSubmit(page, "[data-parking-procedure-form]", {
+    permit_id: await firstOptionValue(page, "[data-parking-procedure-permit-select]"),
+    kind: "vehicle_change",
+    requested_vehicle_label: "青い車 新番号",
+    requested_return_date: "",
+    note: "車両入替",
+  });
+  await waitForCondition(
+    () => backend.state.parking_procedure_requests.some((request) => request.kind === "vehicle_change" && request.requested_vehicle_label === "青い車 新番号"),
+    "parking vehicle change request",
+  );
+  await clickAndConfirm(page, () => page.locator("[data-parking-procedure-approve]").first().click(), "承認");
+  await waitForCondition(
+    () => backend.state.parking_permits.some((permit) => permit.vehicle_label === "青い車 新番号"),
+    "parking vehicle change approval",
+  );
+  await fillSubmit(page, "[data-parking-procedure-form]", {
+    permit_id: await firstOptionValue(page, "[data-parking-procedure-permit-select]"),
+    kind: "certificate",
+    requested_vehicle_label: "",
+    requested_return_date: "",
+    note: "車庫証明",
+  });
+  await waitForCondition(
+    () => backend.state.parking_procedure_requests.some((request) => request.kind === "certificate" && request.note === "車庫証明"),
+    "parking certificate request",
+  );
+  await clickAndConfirm(page, () => page.locator("[data-parking-procedure-approve]").first().click(), "承認");
+  await waitForCondition(
+    () => backend.state.parking_procedure_requests.some((request) => request.kind === "certificate" && request.status === "approved"),
+    "parking certificate approval",
+  );
+  await fillSubmit(page, "[data-parking-space-form]", {
+    code: "P-LOT",
+    kind: "car",
+    assignment_method: "lottery",
+    location: "東側",
+    monthly_fee: "16000",
+  });
+  await waitForCondition(
+    () => backend.state.parking_spaces.some((space) => space.code === "P-LOT" && space.assignment_method === "lottery"),
+    "parking lottery space creation",
+  );
+  const lotterySpaceId = backend.state.parking_spaces.find((space) => space.code === "P-LOT").id;
+  await fillSubmit(page, "[data-parking-permit-form]", {
+    space_id: lotterySpaceId,
+    vehicle_label: "抽選車",
+    priority: "secondary",
+    start_date: "2026-06-01",
+    end_date: "",
+  });
+  await clickAndConfirm(page, () => page.locator("[data-parking-lottery]").first().click(), "抽選");
+  await waitForCondition(
+    () => backend.state.activity_logs.some((log) => log.entity_type === "parking_permit" && log.action === "lottery"),
+    "parking lottery activity log",
+  );
+  const returnDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const changedPermitId = backend.state.parking_permits.find((permit) => permit.vehicle_label === "青い車 新番号").id;
+  await fillSubmit(page, "[data-parking-procedure-form]", {
+    permit_id: changedPermitId,
+    kind: "return_notice",
+    requested_vehicle_label: "",
+    requested_return_date: returnDate,
+    note: "返還届",
+  });
+  await waitForCondition(
+    () => backend.state.parking_procedure_requests.some((request) => request.kind === "return_notice" && request.note === "返還届"),
+    "parking return notice request",
+  );
+  await clickAndConfirm(page, () => page.locator("[data-parking-procedure-approve]").first().click(), "承認");
+  await waitForCondition(
+    () => backend.state.parking_permits.some((permit) => permit.vehicle_label === "青い車 新番号" && permit.status === "ended"),
+    "parking return notice approval",
+  );
 
   await page.goto(`${baseUrl}/requests/`, { waitUntil: "domcontentloaded" });
   await waitPage(page, "requests");

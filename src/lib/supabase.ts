@@ -26,4 +26,6 @@ export type Profile = {
   phone: string | null;
   emergency_contact_name: string | null;
   emergency_contact_phone: string | null;
+  parking_application_blocked?: boolean;
+  parking_application_blocked_reason?: string | null;
 };

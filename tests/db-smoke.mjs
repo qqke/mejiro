@@ -222,6 +222,7 @@ const v27v28Path = path.join(repoRoot, "supabase", "v27_v28_migration.sql");
 const v28v29Path = path.join(repoRoot, "supabase", "v28_v29_migration.sql");
 const v29v30Path = path.join(repoRoot, "supabase", "v29_v30_migration.sql");
 const v30v31Path = path.join(repoRoot, "supabase", "v30_v31_migration.sql");
+const v31v32Path = path.join(repoRoot, "supabase", "v31_v32_migration.sql");
 
 const cluster = await createTempCluster();
 if (!cluster) {
@@ -277,18 +278,32 @@ grant execute on function auth.uid() to authenticated;
 \i '${toPosixPath(v28v29Path)}'
 \i '${toPosixPath(v29v30Path)}'
 \i '${toPosixPath(v30v31Path)}'
+\i '${toPosixPath(v31v32Path)}'
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
   ('11111111-1111-1111-1111-111111111111', 'admin@example.com', '{"display_name":"管理者DB"}'),
   ('22222222-2222-2222-2222-222222222222', 'board@example.com', '{"display_name":"理事DB"}'),
   ('33333333-3333-3333-3333-333333333333', 'resident@example.com', '{"display_name":"住民DB"}'),
-  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'chair@example.com', '{"display_name":"主席DB"}')
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'chair@example.com', '{"display_name":"主席DB"}'),
+  ('12121212-1212-4121-8121-121212121212', 'blocked@example.com', '{"display_name":"停止住民DB"}')
 on conflict (id) do nothing;
 
 update public.profiles set role = 'admin' where id = '11111111-1111-1111-1111-111111111111';
 update public.profiles set role = 'board_member' where id = '22222222-2222-2222-2222-222222222222';
 update public.profiles set role = 'chair' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+update public.profiles
+set building = 'C', unit_number = '303'
+where id = '33333333-3333-3333-3333-333333333333';
+update public.profiles
+set building = 'B', unit_number = '202'
+where id = '22222222-2222-2222-2222-222222222222';
+update public.profiles
+set building = 'D',
+    unit_number = '404',
+    parking_application_blocked = true,
+    parking_application_blocked_reason = '管理費滞納'
+where id = '12121212-1212-4121-8121-121212121212';
 
 insert into public.rooms (id, name, capacity, notes, is_active)
 values ('44444444-4444-4444-4444-444444444444', 'DB会議室', 24, 'db smoke', true)
@@ -330,6 +345,29 @@ values
   ('dddddddd-dddd-4ddd-8ddd-ddddddddddd2', 'DB-P-USED', 'car', '2階', 12000, true, false, '11111111-1111-1111-1111-111111111111', now(), now()),
   ('dddddddd-dddd-4ddd-8ddd-ddddddddddd3', 'DB-P-OFF', 'car', '3階', 12000, false, true, '11111111-1111-1111-1111-111111111111', now(), now())
 on conflict do nothing;
+
+insert into public.parking_spaces (id, code, kind, location, monthly_fee, is_active, is_available, assignment_method, created_by, created_at, updated_at)
+values
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddd11', 'DB-P-ONE', 'car', '抽選なし', 12000, true, true, 'first_come', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddd12', 'DB-P-TWO', 'car', '二台目', 12000, true, true, 'first_come', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddd13', 'DB-P-LOT', 'car', '抽選', 13000, true, true, 'lottery', '11111111-1111-1111-1111-111111111111', now(), now()),
+  ('dddddddd-dddd-4ddd-8ddd-dddddddddd14', 'DB-P-RETURN', 'car', '返還', 12000, true, false, 'first_come', '11111111-1111-1111-1111-111111111111', now(), now())
+on conflict do nothing;
+
+insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, approved_by, approved_at, priority, created_at, updated_at)
+values (
+  'dddddddd-dddd-4ddd-8ddd-dddddddddd15',
+  'dddddddd-dddd-4ddd-8ddd-dddddddddd14',
+  '33333333-3333-3333-3333-333333333333',
+  'DB返還対象車',
+  'active',
+  '2026-05-01',
+  '11111111-1111-1111-1111-111111111111',
+  now(),
+  'secondary',
+  now(),
+  now()
+) on conflict do nothing;
 
 insert into public.lending_items (id, name, kind, location, note, is_active, is_available, created_by, created_at, updated_at)
 values
@@ -610,8 +648,8 @@ begin
       null;
   end;
 
-  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, created_at, updated_at)
-  values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd7', 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1', auth.uid(), 'DB住民車', 'pending', '2026-06-01', now(), now());
+  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, priority, created_at, updated_at)
+  values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd7', 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1', auth.uid(), 'DB住民車', 'pending', '2026-06-01', 'secondary', now(), now());
 
   begin
     insert into public.parking_permits (space_id, user_id, vehicle_label, status, start_date)
@@ -639,6 +677,75 @@ begin
     when insufficient_privilege or check_violation then
       null;
   end;
+
+  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, priority)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd16', 'dddddddd-dddd-4ddd-8ddd-dddddddddd11', auth.uid(), 'DB一台目車', 'pending', '2026-06-01', 'primary');
+
+  select count(*) into actual
+  from public.parking_permits
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd16'
+    and space_kind = 'car'
+    and resident_unit_key = 'C-303'
+    and priority = 'primary';
+
+  if actual <> 1 then
+    raise exception 'primary car application should store denormalized resident unit and kind';
+  end if;
+
+  begin
+    insert into public.parking_permits (space_id, user_id, vehicle_label, status, start_date, priority)
+    values ('dddddddd-dddd-4ddd-8ddd-dddddddddd12', auth.uid(), 'DB二重一台目車', 'pending', '2026-06-01', 'primary');
+    raise exception 'resident should not create second primary car application for same unit';
+  exception
+    when unique_violation then
+      null;
+  end;
+
+  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, priority)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd17', 'dddddddd-dddd-4ddd-8ddd-dddddddddd12', auth.uid(), 'DB二台目車', 'pending', '2026-06-01', 'secondary');
+
+  select count(*) into actual
+  from public.parking_permits
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd17'
+    and priority = 'secondary';
+
+  if actual <> 1 then
+    raise exception 'secondary car application should be allowed and marked secondary';
+  end if;
+
+  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, priority)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd18', 'dddddddd-dddd-4ddd-8ddd-dddddddddd13', auth.uid(), 'DB抽選二台目車', 'pending', '2026-06-01', 'secondary');
+
+  insert into public.parking_procedure_requests (id, permit_id, requester_id, kind, requested_vehicle_label, note)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd20', 'dddddddd-dddd-4ddd-8ddd-dddddddddd15', auth.uid(), 'vehicle_change', 'DB変更後車両', '車両入替');
+
+  begin
+    insert into public.parking_procedure_requests (permit_id, requester_id, kind, requested_return_date, note)
+    values ('dddddddd-dddd-4ddd-8ddd-dddddddddd15', auth.uid(), 'return_notice', current_date + 7, '短すぎる返還届');
+    raise exception 'return notice should require 14 day lead time';
+  exception
+    when check_violation then
+      null;
+  end;
+
+  insert into public.parking_procedure_requests (id, permit_id, requester_id, kind, requested_return_date, note)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd21', 'dddddddd-dddd-4ddd-8ddd-dddddddddd15', auth.uid(), 'return_notice', current_date + 20, '返還届');
+
+  insert into public.parking_procedure_requests (id, permit_id, requester_id, kind, note)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd22', 'dddddddd-dddd-4ddd-8ddd-dddddddddd15', auth.uid(), 'certificate', '車庫証明');
+
+  perform set_config('request.jwt.claim.sub', '12121212-1212-4121-8121-121212121212', false);
+
+  begin
+    insert into public.parking_permits (space_id, user_id, vehicle_label, status, start_date, priority)
+    values ('dddddddd-dddd-4ddd-8ddd-dddddddddd12', auth.uid(), 'DB停止住民車', 'pending', '2026-06-01', 'primary');
+    raise exception 'blocked resident should not apply for parking';
+  exception
+    when insufficient_privilege or check_violation then
+      null;
+  end;
+
+  perform set_config('request.jwt.claim.sub', '33333333-3333-3333-3333-333333333333', false);
 
   insert into public.lending_requests (id, item_id, user_id, purpose, status, created_at, updated_at)
   values ('dddddddd-dddd-4ddd-8ddd-ddddddddddd8', 'dddddddd-dddd-4ddd-8ddd-ddddddddddd4', auth.uid(), 'DB貸出申請', 'pending', now(), now());
@@ -897,6 +1004,94 @@ begin
 
   if actual <> 1 then
     raise exception 'board member should see resident activity logs, got %', actual;
+  end if;
+
+  perform public.approve_parking_application('dddddddd-dddd-4ddd-8ddd-dddddddddd16');
+
+  select count(*) into actual
+  from public.parking_permits
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd16'
+    and status = 'active'
+    and approved_by = auth.uid();
+
+  if actual <> 1 then
+    raise exception 'board member should approve first-come parking application';
+  end if;
+
+  select count(*) into actual
+  from public.parking_spaces
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd11'
+    and is_available = false;
+
+  if actual <> 1 then
+    raise exception 'approved parking space should become unavailable';
+  end if;
+
+  insert into public.parking_permits (id, space_id, user_id, vehicle_label, status, start_date, priority)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd19', 'dddddddd-dddd-4ddd-8ddd-dddddddddd13', auth.uid(), 'DB抽選理事車', 'pending', '2026-06-01', 'primary');
+
+  perform public.draw_parking_lottery('dddddddd-dddd-4ddd-8ddd-dddddddddd13');
+
+  select count(*) into actual
+  from public.parking_permits
+  where space_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd13'
+    and status = 'active';
+
+  if actual <> 1 then
+    raise exception 'lottery should select exactly one active permit, got %', actual;
+  end if;
+
+  select count(*) into actual
+  from public.parking_permits
+  where space_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd13'
+    and status = 'rejected';
+
+  if actual <> 1 then
+    raise exception 'lottery should reject losing competing permits, got %', actual;
+  end if;
+
+  perform public.handle_parking_procedure_request('dddddddd-dddd-4ddd-8ddd-dddddddddd20', true);
+
+  select count(*) into actual
+  from public.parking_permits
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd15'
+    and vehicle_label = 'DB変更後車両';
+
+  if actual <> 1 then
+    raise exception 'vehicle change procedure should update active permit vehicle label';
+  end if;
+
+  perform public.handle_parking_procedure_request('dddddddd-dddd-4ddd-8ddd-dddddddddd22', true);
+
+  select count(*) into actual
+  from public.parking_procedure_requests
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd22'
+    and status = 'approved'
+    and handled_by = auth.uid();
+
+  if actual <> 1 then
+    raise exception 'certificate procedure should be approved and handled by board member';
+  end if;
+
+  perform public.handle_parking_procedure_request('dddddddd-dddd-4ddd-8ddd-dddddddddd21', true);
+
+  select count(*) into actual
+  from public.parking_permits
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd15'
+    and status = 'ended'
+    and end_date is not null;
+
+  if actual <> 1 then
+    raise exception 'return notice should end active parking permit';
+  end if;
+
+  select count(*) into actual
+  from public.parking_spaces
+  where id = 'dddddddd-dddd-4ddd-8ddd-dddddddddd14'
+    and is_available = true;
+
+  if actual <> 1 then
+    raise exception 'return notice should release parking space';
   end if;
 
   select updated_at into before_updated

@@ -190,6 +190,23 @@ async function runResidentAccessCheck() {
       end_date: null,
       approved_by: null,
       approved_at: null,
+      priority: "primary",
+      space_kind: "car",
+      resident_unit_key: "B-202",
+      created_at: "2026-05-11T00:00:00.000Z",
+      updated_at: "2026-05-11T00:00:00.000Z",
+    });
+    backend.state.parking_procedure_requests.unshift({
+      id: "parking-procedure-board-only",
+      permit_id: "permit-board-only",
+      requester_id: "board-user",
+      kind: "certificate",
+      status: "pending",
+      requested_vehicle_label: null,
+      requested_return_date: null,
+      note: "他人の車庫証明",
+      handled_by: null,
+      handled_at: null,
       created_at: "2026-05-11T00:00:00.000Z",
       updated_at: "2026-05-11T00:00:00.000Z",
     });
@@ -280,6 +297,7 @@ async function runResidentAccessCheck() {
     await page.goto(`${baseUrl}/parking/`, { waitUntil: "domcontentloaded" });
     await page.locator("body[data-page='parking']").waitFor({ state: "attached", timeout: 20000 });
     assert((await page.locator("[data-parking-permit-list] .list-item").filter({ hasText: "他人の車" }).count()) === 0, "resident parking page should not show other users' permits");
+    assert((await page.locator("[data-parking-procedure-list] .list-item").filter({ hasText: "他人の車庫証明" }).count()) === 0, "resident parking page should not show other users' parking procedures");
     await page.goto(`${baseUrl}/lending/`, { waitUntil: "domcontentloaded" });
     await page.locator("body[data-page='lending']").waitFor({ state: "attached", timeout: 20000 });
     assert((await page.locator("[data-lending-request-list] .list-item").filter({ hasText: "他人の貸出" }).count()) === 0, "resident lending page should not show other users' lending requests");

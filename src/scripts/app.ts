@@ -259,7 +259,11 @@ type BoardTask = {
 };
 
 type ParkingSpaceKind = "car" | "bicycle" | "motorbike";
+type ParkingAssignmentMethod = "first_come" | "lottery";
 type ParkingPermitStatus = "pending" | "active" | "rejected" | "ended";
+type ParkingPermitPriority = "primary" | "secondary";
+type ParkingProcedureKind = "vehicle_change" | "return_notice" | "certificate";
+type ParkingProcedureStatus = "pending" | "approved" | "rejected";
 type ResidentRequestCategory = "noise" | "rule" | "neighbor" | "common_area" | "other";
 type ResidentRequestStatus = "open" | "in_progress" | "resolved" | "closed";
 type ResidentRequestVisibility = "private" | "board" | "public";
@@ -284,6 +288,7 @@ type ParkingSpace = {
   kind: ParkingSpaceKind;
   location: string | null;
   monthly_fee: number | null;
+  assignment_method: ParkingAssignmentMethod;
   is_active: boolean;
   is_available: boolean;
 };
@@ -294,11 +299,32 @@ type ParkingPermit = {
   user_id: string;
   vehicle_label: string;
   status: ParkingPermitStatus;
+  priority: ParkingPermitPriority;
+  space_kind: ParkingSpaceKind;
+  resident_unit_key: string;
   start_date: string;
   end_date: string | null;
   approved_by: string | null;
   approved_at: string | null;
-  parking_spaces?: Pick<ParkingSpace, "code" | "kind" | "location"> | null;
+  parking_spaces?: Pick<ParkingSpace, "code" | "kind" | "location" | "assignment_method"> | null;
+};
+
+type ParkingProcedureRequest = {
+  id: string;
+  permit_id: string;
+  requester_id: string;
+  kind: ParkingProcedureKind;
+  status: ParkingProcedureStatus;
+  requested_vehicle_label: string | null;
+  requested_return_date: string | null;
+  note: string | null;
+  handled_by: string | null;
+  handled_at: string | null;
+  created_at: string;
+  updated_at: string;
+  parking_permits?: Pick<ParkingPermit, "vehicle_label" | "space_id"> & {
+    parking_spaces?: Pick<ParkingSpace, "code" | "kind" | "location"> | null;
+  } | null;
 };
 
 type ResidentRequest = {
@@ -736,6 +762,28 @@ const parkingPermitStatusLabels: Record<ParkingPermitStatus, string> = {
   ended: "終了",
 };
 
+const parkingAssignmentMethodLabels: Record<ParkingAssignmentMethod, string> = {
+  first_come: "先着",
+  lottery: "抽選",
+};
+
+const parkingPermitPriorityLabels: Record<ParkingPermitPriority, string> = {
+  primary: "1台目",
+  secondary: "2台目",
+};
+
+const parkingProcedureKindLabels: Record<ParkingProcedureKind, string> = {
+  vehicle_change: "車両変更",
+  return_notice: "返還届",
+  certificate: "車庫証明",
+};
+
+const parkingProcedureStatusLabels: Record<ParkingProcedureStatus, string> = {
+  pending: "申請中",
+  approved: "承認",
+  rejected: "却下",
+};
+
 const residentRequestCategoryLabels: Record<ResidentRequestCategory, string> = {
   noise: "騒音",
   rule: "生活ルール",
@@ -949,6 +997,10 @@ function confirmParkingAction(status: ParkingPermitStatus) {
   };
   const message = messages[status];
   return !message || confirmAction(message);
+}
+
+function confirmParkingProcedureAction(approve: boolean) {
+  return confirmAction(approve ? "この駐車手続きを承認しますか？" : "この駐車手続きを却下しますか？");
 }
 
 function confirmCircularAction(status: CircularStatus) {
@@ -1570,7 +1622,7 @@ async function initLogin() {
 async function loadProfile(userId: string, email: string): Promise<Profile> {
   const { data, error } = await supabase!
     .from("profiles")
-    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
+    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone, parking_application_blocked, parking_application_blocked_reason")
     .eq("id", userId)
     .single();
 
@@ -1580,7 +1632,7 @@ async function loadProfile(userId: string, email: string): Promise<Profile> {
   const { data: inserted } = await supabase!
     .from("profiles")
     .insert({ id: userId, display_name: fallbackName, role: "resident" })
-    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
+    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone, parking_application_blocked, parking_application_blocked_reason")
     .single();
 
   return (inserted as Profile | null) ?? {
@@ -1592,6 +1644,8 @@ async function loadProfile(userId: string, email: string): Promise<Profile> {
     phone: null,
     emergency_contact_name: null,
     emergency_contact_phone: null,
+    parking_application_blocked: false,
+    parking_application_blocked_reason: null,
   };
 }
 
@@ -3877,7 +3931,7 @@ async function initResidents() {
         emergency_contact_phone: String(form.get("emergency_contact_phone") || "") || null,
       })
       .eq("id", currentProfile!.id)
-      .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
+      .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone, parking_application_blocked, parking_application_blocked_reason")
       .single();
 
     if (error) {
@@ -3911,7 +3965,7 @@ function fillResidentForm() {
 async function renderResidentsPage() {
   const { data } = await supabase!
     .from("profiles")
-    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone")
+    .select("id, display_name, role, building, unit_number, phone, emergency_contact_name, emergency_contact_phone, parking_application_blocked, parking_application_blocked_reason")
     .order("building")
     .order("unit_number");
   const profiles = (data ?? []) as Profile[];
@@ -4324,6 +4378,7 @@ async function initParking() {
     const { data: space, error } = await supabase!.from("parking_spaces").insert({
       code,
       kind: String(form.get("kind")),
+      assignment_method: String(form.get("assignment_method")),
       location: String(form.get("location") || "") || null,
       monthly_fee: form.get("monthly_fee") ? Number(form.get("monthly_fee")) : null,
       created_by: currentProfile!.id,
@@ -4348,6 +4403,7 @@ async function initParking() {
       space_id: String(form.get("space_id")),
       user_id: currentProfile!.id,
       vehicle_label: vehicleLabel,
+      priority: String(form.get("priority")),
       start_date: String(form.get("start_date")),
       end_date: String(form.get("end_date") || "") || null,
       status: "pending",
@@ -4361,23 +4417,67 @@ async function initParking() {
     await recordActivity("parking_permit", permit?.id ?? vehicleLabel, "created", `駐車・駐輪利用 ${vehicleLabel} を申請しました。`);
     await renderParkingPage();
   });
+
+  qs<HTMLFormElement>("[data-parking-procedure-form]")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    if (!(formElement instanceof HTMLFormElement)) return;
+    const form = new FormData(formElement);
+    const kind = String(form.get("kind")) as ParkingProcedureKind;
+    const returnDate = String(form.get("requested_return_date") || "");
+    if (kind === "return_notice") {
+      const minimum = new Date();
+      minimum.setDate(minimum.getDate() + 14);
+      if (!returnDate || new Date(returnDate) < new Date(minimum.toISOString().slice(0, 10))) {
+        setStatus("[data-parking-procedure-status]", "返還届は14日以上前の日付を指定してください。", true);
+        return;
+      }
+    }
+    const vehicleLabel = String(form.get("requested_vehicle_label") || "");
+    if (kind === "vehicle_change" && !vehicleLabel.trim()) {
+      setStatus("[data-parking-procedure-status]", "車両変更では変更後車両を入力してください。", true);
+      return;
+    }
+    const { data: request, error } = await supabase!.from("parking_procedure_requests").insert({
+      permit_id: String(form.get("permit_id")),
+      requester_id: currentProfile!.id,
+      kind,
+      requested_vehicle_label: vehicleLabel || null,
+      requested_return_date: returnDate || null,
+      note: String(form.get("note") || "") || null,
+      status: "pending",
+    }).select("id").single();
+    if (error) {
+      setStatus("[data-parking-procedure-status]", error.message, true);
+      return;
+    }
+    formElement.reset();
+    setStatus("[data-parking-procedure-status]", "駐車手続きを申請しました。");
+    await recordActivity("parking_procedure", request?.id ?? kind, "created", `駐車手続き ${parkingProcedureKindLabels[kind]} を申請しました。`);
+    await renderParkingPage();
+  });
 }
 
 async function renderParkingPage() {
-  const [{ data: spaces }, { data: permits }] = await Promise.all([
+  const [{ data: spaces }, { data: permits }, { data: procedures }] = await Promise.all([
     supabase!.from("parking_spaces").select("*").order("kind").order("code"),
-    supabase!.from("parking_permits").select("*, parking_spaces(code, kind, location)").order("created_at", { ascending: false }),
+    supabase!.from("parking_permits").select("*, parking_spaces(code, kind, location, assignment_method)").order("created_at", { ascending: false }),
+    supabase!.from("parking_procedure_requests").select("*, parking_permits(vehicle_label, space_id, parking_spaces(code, kind, location))").order("created_at", { ascending: false }),
   ]);
   parkingSpacesCache = (spaces ?? []) as ParkingSpace[];
   const allParkingPermits = (permits ?? []) as ParkingPermit[];
+  const allParkingProcedures = (procedures ?? []) as ParkingProcedureRequest[];
   const parkingPermits = canManage() ? allParkingPermits : allParkingPermits.filter((permit) => permit.user_id === currentProfile?.id);
+  const parkingProcedures = canManage() ? allParkingProcedures : allParkingProcedures.filter((request) => request.requester_id === currentProfile?.id);
   const availableSpaces = parkingSpacesCache.filter((space) => space.is_active && space.is_available);
   setText("[data-metric='parking-available']", String(availableSpaces.length));
   setText("[data-metric='parking-active']", String(parkingSpacesCache.filter((space) => space.is_active && !space.is_available).length));
   setText("[data-metric='parking-pending']", String(parkingPermits.filter((permit) => permit.status === "pending").length));
   renderParkingSpaceSelect(availableSpaces);
+  renderParkingProcedurePermitSelect(parkingPermits.filter((permit) => permit.status === "active" && permit.space_kind === "car"));
   renderParkingSpaces(parkingSpacesCache);
   renderParkingPermits(parkingPermits);
+  renderParkingProcedures(parkingProcedures);
 }
 
 function renderParkingSpaceSelect(spaces: ParkingSpace[]) {
@@ -4408,7 +4508,7 @@ function renderParkingSpaces(spaces: ParkingSpace[]) {
           <div class="list-row">
             <div>
               <strong>${parkingKindLabels[space.kind]} ${escapeHtml(space.code)}</strong>
-              <p class="meta">${escapeHtml(space.location ?? "-")} / 月額 ${space.monthly_fee == null ? "-" : formatCurrency(space.monthly_fee)}</p>
+              <p class="meta">${escapeHtml(space.location ?? "-")} / 月額 ${space.monthly_fee == null ? "-" : formatCurrency(space.monthly_fee)} / ${parkingAssignmentMethodLabels[space.assignment_method ?? "first_come"]}</p>
             </div>
             <span class="badge ${space.is_available ? "success" : "warning"}">${space.is_available ? "空き" : "利用中"}</span>
           </div>
@@ -4416,6 +4516,17 @@ function renderParkingSpaces(spaces: ParkingSpace[]) {
       `,
     )
     .join("");
+}
+
+function renderParkingProcedurePermitSelect(permits: ParkingPermit[]) {
+  const select = qs<HTMLSelectElement>("[data-parking-procedure-permit-select]");
+  if (!select) return;
+  const submit = qs<HTMLButtonElement>("[data-parking-procedure-form] button[type='submit']");
+  select.disabled = permits.length === 0;
+  if (submit) submit.disabled = permits.length === 0;
+  select.innerHTML = permits.length
+    ? permits.map((permit) => `<option value="${permit.id}">${escapeHtml(permit.parking_spaces?.code ?? "-")} ${escapeHtml(permit.vehicle_label)}</option>`).join("")
+    : `<option value="">利用中の駐車許可はありません</option>`;
 }
 
 function renderParkingPermits(permits: ParkingPermit[]) {
@@ -4446,16 +4557,22 @@ function renderParkingPermits(permits: ParkingPermit[]) {
           <div class="list-row">
             <div>
               <strong>${parkingKindLabels[permit.parking_spaces?.kind ?? "car"]} ${escapeHtml(permit.parking_spaces?.code ?? "-")}</strong>
-              <p class="meta">${escapeHtml(permit.vehicle_label)} / ${escapeHtml(permit.start_date)}${permit.end_date ? ` - ${escapeHtml(permit.end_date)}` : ""}</p>
+              <p class="meta">${escapeHtml(permit.vehicle_label)} / ${parkingPermitPriorityLabels[permit.priority ?? "primary"]} / ${escapeHtml(permit.resident_unit_key ?? "-")} / ${parkingAssignmentMethodLabels[permit.parking_spaces?.assignment_method ?? "first_come"]}</p>
+              <p class="meta">${escapeHtml(permit.start_date)}${permit.end_date ? ` - ${escapeHtml(permit.end_date)}` : ""}</p>
             </div>
             ${parkingPermitStatusBadge(permit.status)}
           </div>
           ${
             canManage() && permit.status === "pending"
-              ? `<div class="toolbar">
-                  <button class="button" type="button" data-parking-approve="${permit.id}">承認</button>
-                  <button class="button danger" type="button" data-parking-reject="${permit.id}">却下</button>
-                </div>`
+              ? permit.parking_spaces?.assignment_method === "lottery"
+                ? `<div class="toolbar">
+                    <button class="button" type="button" data-parking-lottery="${permit.space_id}">抽選実施</button>
+                    <button class="button danger" type="button" data-parking-reject="${permit.id}">却下</button>
+                  </div>`
+                : `<div class="toolbar">
+                    <button class="button" type="button" data-parking-approve="${permit.id}">承認</button>
+                    <button class="button danger" type="button" data-parking-reject="${permit.id}">却下</button>
+                  </div>`
               : canManage() && permit.status === "active"
                 ? `<div class="toolbar"><button class="button secondary" type="button" data-parking-end="${permit.id}">終了</button></div>`
                 : ""
@@ -4466,7 +4583,7 @@ function renderParkingPermits(permits: ParkingPermit[]) {
     .join("");
 
   qsa<HTMLButtonElement>("[data-parking-approve]").forEach((button) => {
-    button.addEventListener("click", () => updateParkingPermitStatus(button.dataset.parkingApprove!, "active"));
+    button.addEventListener("click", () => approveParkingApplication(button.dataset.parkingApprove!));
   });
   qsa<HTMLButtonElement>("[data-parking-reject]").forEach((button) => {
     button.addEventListener("click", () => updateParkingPermitStatus(button.dataset.parkingReject!, "rejected"));
@@ -4474,6 +4591,87 @@ function renderParkingPermits(permits: ParkingPermit[]) {
   qsa<HTMLButtonElement>("[data-parking-end]").forEach((button) => {
     button.addEventListener("click", () => updateParkingPermitStatus(button.dataset.parkingEnd!, "ended"));
   });
+  qsa<HTMLButtonElement>("[data-parking-lottery]").forEach((button) => {
+    button.addEventListener("click", () => drawParkingLottery(button.dataset.parkingLottery!));
+  });
+}
+
+function renderParkingProcedures(requests: ParkingProcedureRequest[]) {
+  const container = qs("[data-parking-procedure-list]");
+  if (!container) return;
+  if (!requests.length) {
+    container.innerHTML = `<p class="meta">駐車手続きはありません。</p>`;
+    return;
+  }
+  container.innerHTML = requests
+    .map((request) => {
+      const space = request.parking_permits?.parking_spaces;
+      const detail = request.kind === "vehicle_change"
+        ? request.requested_vehicle_label
+        : request.kind === "return_notice"
+          ? request.requested_return_date
+          : request.note;
+      return `
+        <article class="list-item">
+          <div class="list-row">
+            <div>
+              <strong>${parkingProcedureKindLabels[request.kind]} / ${escapeHtml(space?.code ?? "-")}</strong>
+              <p class="meta">${escapeHtml(request.parking_permits?.vehicle_label ?? "-")} / ${escapeHtml(detail ?? "-")}</p>
+            </div>
+            ${parkingProcedureStatusBadge(request.status)}
+          </div>
+          ${
+            canManage() && request.status === "pending"
+              ? `<div class="toolbar">
+                  <button class="button" type="button" data-parking-procedure-approve="${request.id}">承認</button>
+                  <button class="button danger" type="button" data-parking-procedure-reject="${request.id}">却下</button>
+                </div>`
+              : ""
+          }
+        </article>
+      `;
+    })
+    .join("");
+
+  qsa<HTMLButtonElement>("[data-parking-procedure-approve]").forEach((button) => {
+    button.addEventListener("click", () => handleParkingProcedure(button.dataset.parkingProcedureApprove!, true));
+  });
+  qsa<HTMLButtonElement>("[data-parking-procedure-reject]").forEach((button) => {
+    button.addEventListener("click", () => handleParkingProcedure(button.dataset.parkingProcedureReject!, false));
+  });
+}
+
+async function approveParkingApplication(id: string) {
+  if (!confirmParkingAction("active")) return;
+  const { error } = await supabase!.rpc("approve_parking_application", { p_permit_id: id });
+  if (error) {
+    showErrorToast(error.message);
+    return;
+  }
+  await recordActivity("parking_permit", id, "active", "駐車・駐輪申請を承認しました。");
+  await renderParkingPage();
+}
+
+async function drawParkingLottery(spaceId: string) {
+  if (!confirmAction("この区画の駐車抽選を実施しますか？")) return;
+  const { data, error } = await supabase!.rpc("draw_parking_lottery", { p_space_id: spaceId });
+  if (error) {
+    showErrorToast(error.message);
+    return;
+  }
+  await recordActivity("parking_permit", data?.id ?? spaceId, "lottery", "駐車場の抽選を実施しました。");
+  await renderParkingPage();
+}
+
+async function handleParkingProcedure(id: string, approve: boolean) {
+  if (!confirmParkingProcedureAction(approve)) return;
+  const { error } = await supabase!.rpc("handle_parking_procedure_request", { p_request_id: id, p_approve: approve });
+  if (error) {
+    showErrorToast(error.message);
+    return;
+  }
+  await recordActivity("parking_procedure", id, approve ? "approved" : "rejected", `駐車手続きを${approve ? "承認" : "却下"}しました。`);
+  await renderParkingPage();
 }
 
 async function updateParkingPermitStatus(id: string, status: ParkingPermitStatus) {
@@ -5943,6 +6141,7 @@ const activityEntityLabels: Record<string, string> = {
   meeting_session: "会議",
   notice: "通知",
   parking_permit: "駐車・駐輪申請",
+  parking_procedure: "駐車手続き",
   parking_space: "駐車・駐輪区画",
   profile: "ユーザー",
   resident_request: "住民相談",
@@ -6103,6 +6302,18 @@ async function renderProfiles() {
                 .join("")}
             </select>
           </div>
+          ${
+            currentProfile?.role === "admin"
+              ? `<div class="toolbar">
+                  <label class="checkbox-line">
+                    <input type="checkbox" data-parking-blocked="${profile.id}" ${profile.parking_application_blocked ? "checked" : ""} />
+                    <span>駐車申請停止</span>
+                  </label>
+                  <input class="input" data-parking-blocked-reason="${profile.id}" value="${escapeHtml(profile.parking_application_blocked_reason ?? "")}" placeholder="停止理由" />
+                  <button class="button secondary" type="button" data-parking-blocked-save="${profile.id}">保存</button>
+                </div>`
+              : ""
+          }
         </article>
       `,
     )
@@ -6129,6 +6340,28 @@ async function renderProfiles() {
 
       select.dataset.currentRole = nextRole;
       await recordActivity("profile", profileId, "role_changed", `${profileName}: ${roleLabels[previousRole]} -> ${roleLabels[nextRole]}`);
+      await renderActivityLogs();
+    });
+  });
+
+  qsa<HTMLButtonElement>("[data-parking-blocked-save]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const profileId = button.dataset.parkingBlockedSave;
+      if (!profileId) return;
+      const checkbox = qs<HTMLInputElement>(`[data-parking-blocked="${profileId}"]`);
+      const reasonInput = qs<HTMLInputElement>(`[data-parking-blocked-reason="${profileId}"]`);
+      const blocked = Boolean(checkbox?.checked);
+      const reason = reasonInput?.value.trim() || null;
+      const { error } = await supabase!.from("profiles").update({
+        parking_application_blocked: blocked,
+        parking_application_blocked_reason: blocked ? reason : null,
+      }).eq("id", profileId);
+      if (error) {
+        showErrorToast(error.message);
+        return;
+      }
+      await recordActivity("profile", profileId, "parking_block_updated", blocked ? `駐車申請を停止しました。${reason ? ` 理由: ${reason}` : ""}` : "駐車申請停止を解除しました。");
+      await renderProfiles();
       await renderActivityLogs();
     });
   });
@@ -6230,6 +6463,11 @@ function boardTaskStatusBadge(status: BoardTaskStatus) {
 function parkingPermitStatusBadge(status: ParkingPermitStatus) {
   const className = status === "active" ? "success" : status === "pending" ? "warning" : "danger";
   return `<span class="badge ${className}">${parkingPermitStatusLabels[status]}</span>`;
+}
+
+function parkingProcedureStatusBadge(status: ParkingProcedureStatus) {
+  const className = status === "approved" ? "success" : status === "pending" ? "warning" : "danger";
+  return `<span class="badge ${className}">${parkingProcedureStatusLabels[status]}</span>`;
 }
 
 function residentRequestStatusBadge(status: ResidentRequestStatus) {

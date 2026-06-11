@@ -22,6 +22,8 @@ function seedState() {
         phone: "090-0000-0000",
         emergency_contact_name: "緊急先",
         emergency_contact_phone: "090-1111-1111",
+        parking_application_blocked: false,
+        parking_application_blocked_reason: null,
         created_at: iso("2026-05-01T00:00:00Z"),
         updated_at: iso("2026-05-01T00:00:00Z"),
       },
@@ -35,6 +37,8 @@ function seedState() {
         phone: "090-2222-2222",
         emergency_contact_name: "理事緊急先",
         emergency_contact_phone: "090-3333-3333",
+        parking_application_blocked: false,
+        parking_application_blocked_reason: null,
         created_at: iso("2026-05-01T00:00:00Z"),
         updated_at: iso("2026-05-01T00:00:00Z"),
       },
@@ -48,6 +52,8 @@ function seedState() {
         phone: "090-3333-0000",
         emergency_contact_name: "主席緊急先",
         emergency_contact_phone: "090-3333-1111",
+        parking_application_blocked: false,
+        parking_application_blocked_reason: null,
         created_at: iso("2026-05-01T00:00:00Z"),
         updated_at: iso("2026-05-01T00:00:00Z"),
       },
@@ -61,6 +67,8 @@ function seedState() {
         phone: "090-4444-0000",
         emergency_contact_name: "理事長緊急先",
         emergency_contact_phone: "090-4444-1111",
+        parking_application_blocked: false,
+        parking_application_blocked_reason: null,
         created_at: iso("2026-05-01T00:00:00Z"),
         updated_at: iso("2026-05-01T00:00:00Z"),
       },
@@ -74,6 +82,8 @@ function seedState() {
         phone: "090-4444-4444",
         emergency_contact_name: "住民緊急先",
         emergency_contact_phone: "090-5555-5555",
+        parking_application_blocked: false,
+        parking_application_blocked_reason: null,
         created_at: iso("2026-05-01T00:00:00Z"),
         updated_at: iso("2026-05-01T00:00:00Z"),
       },
@@ -302,6 +312,7 @@ function seedState() {
         kind: "car",
         location: "北側",
         monthly_fee: 12000,
+        assignment_method: "first_come",
         is_active: true,
         is_available: true,
         created_by: "admin-user",
@@ -316,6 +327,9 @@ function seedState() {
         user_id: "resident-user",
         vehicle_label: "白い車",
         status: "pending",
+        priority: "primary",
+        space_kind: "car",
+        resident_unit_key: "C-303",
         start_date: "2026-05-15",
         end_date: null,
         approved_by: null,
@@ -324,6 +338,7 @@ function seedState() {
         updated_at: iso("2026-05-10T00:00:00Z"),
       },
     ],
+    parking_procedure_requests: [],
     resident_requests: [
       {
         id: "request-1",
@@ -568,7 +583,17 @@ function enrichRow(state, table, row) {
     next.vendors = vendor ? { name: vendor.name } : null;
   } else if (table === "parking_permits") {
     const space = state.parking_spaces.find((item) => item.id === row.space_id);
-    next.parking_spaces = space ? { code: space.code, kind: space.kind, location: space.location } : null;
+    next.parking_spaces = space ? { code: space.code, kind: space.kind, location: space.location, assignment_method: space.assignment_method } : null;
+  } else if (table === "parking_procedure_requests") {
+    const permit = state.parking_permits.find((item) => item.id === row.permit_id);
+    const space = permit ? state.parking_spaces.find((item) => item.id === permit.space_id) : null;
+    next.parking_permits = permit
+      ? {
+          vehicle_label: permit.vehicle_label,
+          space_id: permit.space_id,
+          parking_spaces: space ? { code: space.code, kind: space.kind, location: space.location } : null,
+        }
+      : null;
   } else if (table === "circular_acknowledgements") {
     const circular = state.circulars.find((item) => item.id === row.circular_id);
     next.circulars = circular ? { title: circular.title, kind: circular.kind, target_role: circular.target_role } : null;
@@ -638,6 +663,34 @@ function applyInsert(state, table, payload) {
     if (table === "activity_logs" && row.entity_id != null && !isUuid(row.entity_id)) {
       throw new Error(`invalid uuid for activity_logs.entity_id: ${row.entity_id}`);
     }
+    if (table === "parking_spaces") {
+      if (row.assignment_method === undefined) row.assignment_method = "first_come";
+      if (row.is_active === undefined) row.is_active = true;
+      if (row.is_available === undefined) row.is_available = true;
+    }
+    if (table === "parking_permits") {
+      const space = state.parking_spaces.find((entry) => entry.id === row.space_id);
+      const profile = state.profiles.find((entry) => entry.id === row.user_id);
+      row.priority = row.priority ?? "primary";
+      row.space_kind = space?.kind ?? "car";
+      row.resident_unit_key = profile?.building && profile?.unit_number ? `${profile.building}-${profile.unit_number}` : row.user_id;
+    }
+    if (table === "parking_procedure_requests") {
+      const permit = state.parking_permits.find((entry) => entry.id === row.permit_id);
+      if (row.kind === "return_notice") {
+        const minimum = new Date();
+        minimum.setDate(minimum.getDate() + 14);
+        if (!row.requested_return_date || new Date(row.requested_return_date) < new Date(minimum.toISOString().slice(0, 10))) {
+          throw new Error("返還届は14日以上前に提出してください。");
+        }
+      }
+      if (row.kind === "vehicle_change" && !row.requested_vehicle_label) {
+        throw new Error("車両変更では変更後車両を入力してください。");
+      }
+      if (permit?.status !== "active") {
+        throw new Error("利用中の駐車許可のみ手続きできます。");
+      }
+    }
     if (!row.id) row.id = nextId(state, table.replace(/_.*$/, ""));
     if (table === "surveys" && row.is_open === undefined) row.is_open = true;
     if (table === "meeting_sessions" && row.status === undefined) row.status = "open";
@@ -672,6 +725,76 @@ function applyUpdate(state, table, payload, url) {
   return updated;
 }
 
+function approveParkingApplication(state, permitId, actorId) {
+  const permit = state.parking_permits.find((item) => item.id === permitId);
+  if (!permit || permit.status !== "pending") throw new Error("承認対象の駐車申請が見つからないか、承認できません。");
+  const space = state.parking_spaces.find((item) => item.id === permit.space_id);
+  if (!space || !space.is_active || !space.is_available) throw new Error("対象区画は利用できません。");
+  if (space.assignment_method === "lottery") throw new Error("抽選区画は抽選実施から承認してください。");
+  permit.status = "active";
+  permit.approved_by = actorId;
+  permit.approved_at = iso(new Date());
+  permit.updated_at = iso(new Date());
+  space.is_available = false;
+  space.updated_at = iso(new Date());
+  return clone(permit);
+}
+
+function drawParkingLottery(state, spaceId, actorId) {
+  const space = state.parking_spaces.find((item) => item.id === spaceId);
+  if (!space || space.assignment_method !== "lottery") throw new Error("抽選対象の区画が見つかりません。");
+  const candidates = state.parking_permits
+    .filter((permit) => permit.space_id === spaceId && permit.status === "pending")
+    .sort((a, b) => (a.priority === b.priority ? a.created_at.localeCompare(b.created_at) : a.priority === "primary" ? -1 : 1));
+  const winner = candidates[0];
+  if (!winner) throw new Error("抽選対象の申請がありません。");
+  for (const permit of candidates.slice(1)) {
+    permit.status = "rejected";
+    permit.updated_at = iso(new Date());
+  }
+  winner.status = "active";
+  winner.approved_by = actorId;
+  winner.approved_at = iso(new Date());
+  winner.updated_at = iso(new Date());
+  space.is_available = false;
+  space.updated_at = iso(new Date());
+  return clone(winner);
+}
+
+function handleParkingProcedureRequest(state, requestId, approve, actorId) {
+  const request = state.parking_procedure_requests.find((item) => item.id === requestId);
+  if (!request || request.status !== "pending") throw new Error("処理対象の駐車手続きが見つかりません。");
+  const permit = state.parking_permits.find((item) => item.id === request.permit_id);
+  if (!permit) throw new Error("対象の駐車利用が見つかりません。");
+  if (approve) {
+    if (request.kind === "vehicle_change") {
+      permit.vehicle_label = request.requested_vehicle_label;
+      permit.updated_at = iso(new Date());
+    } else if (request.kind === "return_notice") {
+      permit.status = "ended";
+      permit.end_date = request.requested_return_date;
+      permit.updated_at = iso(new Date());
+      const space = state.parking_spaces.find((item) => item.id === permit.space_id);
+      if (space) {
+        space.is_available = true;
+        space.updated_at = iso(new Date());
+      }
+    }
+  }
+  request.status = approve ? "approved" : "rejected";
+  request.handled_by = actorId;
+  request.handled_at = iso(new Date());
+  request.updated_at = iso(new Date());
+  return clone(request);
+}
+
+function applyRpc(state, name, payload, actorId) {
+  if (name === "approve_parking_application") return approveParkingApplication(state, payload.p_permit_id, actorId);
+  if (name === "draw_parking_lottery") return drawParkingLottery(state, payload.p_space_id, actorId);
+  if (name === "handle_parking_procedure_request") return handleParkingProcedureRequest(state, payload.p_request_id, payload.p_approve, actorId);
+  throw new Error(`unknown rpc ${name}`);
+}
+
 function authResponse(state, email) {
   const profile = authAccountForEmail(state, email) ?? state.profiles[0];
   const user = {
@@ -699,6 +822,7 @@ function authResponse(state, email) {
 export function createMockSupabaseBackend() {
   const state = seedState();
   const realtimeEvents = [];
+  let currentUserId = state.profiles[0]?.id ?? "admin-user";
 
   return {
     state,
@@ -776,6 +900,7 @@ export function createMockSupabaseBackend() {
         }
 
         const body = authResponse(state, email);
+        currentUserId = profile.id;
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -794,6 +919,16 @@ export function createMockSupabaseBackend() {
       await page.route("**/rest/v1/**", async (route) => {
         const request = route.request();
         const url = new URL(request.url());
+        const rpcMatch = url.pathname.match(/\/rest\/v1\/rpc\/([^/]+)$/);
+        if (rpcMatch) {
+          try {
+            const body = applyRpc(state, decodeURIComponent(rpcMatch[1]), request.postDataJSON?.() ?? {}, currentUserId);
+            await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+          } catch (error) {
+            await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ message: error.message }) });
+          }
+          return;
+        }
         const table = tableNameFromUrl(url);
         if (!table || !state[table]) {
           await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: "not found" }) });

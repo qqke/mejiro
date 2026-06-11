@@ -22,6 +22,7 @@ const v27v28 = await read("supabase/v27_v28_migration.sql");
 const v28v29 = await read("supabase/v28_v29_migration.sql");
 const v29v30 = await read("supabase/v29_v30_migration.sql");
 const v30v31 = await read("supabase/v30_v31_migration.sql");
+const v31v32 = await read("supabase/v31_v32_migration.sql");
 
 function getPublicTables(sql) {
   const tables = [];
@@ -121,6 +122,30 @@ for (const bit of [
 ]) {
   assert(schema.includes(bit), `schema.sql should include ${bit}`);
   assert(v30v31.includes(bit), `v30_v31_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "parking_assignment_method",
+  "parking_permit_priority",
+  "parking_procedure_kind",
+  "parking_procedure_status",
+  "parking_application_blocked",
+  "parking_application_blocked_reason",
+  "assignment_method public.parking_assignment_method",
+  "priority public.parking_permit_priority",
+  "space_kind public.parking_space_kind",
+  "resident_unit_key text",
+  "parking_permits_one_primary_car_per_unit",
+  "parking_procedure_requests",
+  "approve_parking_application",
+  "draw_parking_lottery",
+  "handle_parking_procedure_request",
+  "set_parking_permit_denormalized_fields",
+  "parking_procedure_requests_select_own_or_manager",
+  "grant select, insert, update on public.parking_procedure_requests to authenticated;",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v31v32.includes(bit), `v31_v32_migration.sql should include ${bit}`);
 }
 
 for (const bit of [
