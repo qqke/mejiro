@@ -751,8 +751,8 @@ const boardTaskPriorityLabels: Record<BoardTaskPriority, string> = {
 
 const parkingKindLabels: Record<ParkingSpaceKind, string> = {
   car: "駐車場",
-  bicycle: "駐輪場",
-  motorbike: "バイク置場",
+  bicycle: "駐車場",
+  motorbike: "駐車場",
 };
 
 const parkingPermitStatusLabels: Record<ParkingPermitStatus, string> = {
@@ -991,9 +991,9 @@ function confirmDocumentAction(status: DocumentStatus) {
 
 function confirmParkingAction(status: ParkingPermitStatus) {
   const messages: Partial<Record<ParkingPermitStatus, string>> = {
-    active: "この駐車・駐輪申請を承認しますか？",
-    rejected: "この駐車・駐輪申請を却下しますか？",
-    ended: "この駐車・駐輪利用を終了しますか？",
+    active: "この駐車申請を承認しますか？",
+    rejected: "この駐車申請を却下しますか？",
+    ended: "この駐車利用を終了しますか？",
   };
   const message = messages[status];
   return !message || confirmAction(message);
@@ -1490,7 +1490,7 @@ function initGlobalSearch() {
     業者契約: "業者 契約 更新 委託",
     住民名簿: "住民 世帯 名簿",
     防災安否: "防災 安否 訓練",
-    駐車駐輪: "駐車 駐輪 申請 承認",
+    駐車場: "駐車 車庫 申請 承認",
     鍵貸出: "鍵 備品 貸出 返却 承認",
     当番巡回: "当番 巡回 予定",
     長期点検: "点検 長期 期限 計画",
@@ -1756,7 +1756,7 @@ async function initHome() {
             tone: ownOpenResidentRequests ? "warning" : "success",
           },
           {
-            title: "駐車・駐輪申請",
+            title: "駐車申請",
             detail: `${ownPendingParking}件の申請が承認待ちです。`,
             href: route("/parking/"),
             badge: String(ownPendingParking),
@@ -1799,7 +1799,7 @@ async function initHome() {
             tone: openResidentRequests ? "warning" : "success",
           },
           {
-            title: "駐車・駐輪申請",
+            title: "駐車申請",
             detail: `${pendingParking}件が承認待ちです。`,
             href: route("/parking/"),
             badge: String(pendingParking),
@@ -4377,7 +4377,7 @@ async function initParking() {
     const code = String(form.get("code"));
     const { data: space, error } = await supabase!.from("parking_spaces").insert({
       code,
-      kind: String(form.get("kind")),
+      kind: "car",
       assignment_method: String(form.get("assignment_method")),
       location: String(form.get("location") || "") || null,
       monthly_fee: form.get("monthly_fee") ? Number(form.get("monthly_fee")) : null,
@@ -4389,7 +4389,7 @@ async function initParking() {
     }
     formElement.reset();
     setStatus("[data-parking-space-status]", "区画を登録しました。");
-    await recordActivity("parking_space", space?.id ?? code, "created", `駐車・駐輪区画 ${code} を登録しました。`);
+    await recordActivity("parking_space", space?.id ?? code, "created", `駐車区画 ${code} を登録しました。`);
     await renderParkingPage();
   });
 
@@ -4414,7 +4414,7 @@ async function initParking() {
     }
     formElement.reset();
     setStatus("[data-parking-permit-status]", "利用申請を送信しました。");
-    await recordActivity("parking_permit", permit?.id ?? vehicleLabel, "created", `駐車・駐輪利用 ${vehicleLabel} を申請しました。`);
+    await recordActivity("parking_permit", permit?.id ?? vehicleLabel, "created", `駐車利用 ${vehicleLabel} を申請しました。`);
     await renderParkingPage();
   });
 
@@ -4464,9 +4464,9 @@ async function renderParkingPage() {
     supabase!.from("parking_permits").select("*, parking_spaces(code, kind, location, assignment_method)").order("created_at", { ascending: false }),
     supabase!.from("parking_procedure_requests").select("*, parking_permits(vehicle_label, space_id, parking_spaces(code, kind, location))").order("created_at", { ascending: false }),
   ]);
-  parkingSpacesCache = (spaces ?? []) as ParkingSpace[];
-  const allParkingPermits = (permits ?? []) as ParkingPermit[];
-  const allParkingProcedures = (procedures ?? []) as ParkingProcedureRequest[];
+  parkingSpacesCache = ((spaces ?? []) as ParkingSpace[]).filter((space) => space.kind === "car");
+  const allParkingPermits = ((permits ?? []) as ParkingPermit[]).filter(isCarParkingPermit);
+  const allParkingProcedures = ((procedures ?? []) as ParkingProcedureRequest[]).filter(isCarParkingProcedure);
   const parkingPermits = canManage() ? allParkingPermits : allParkingPermits.filter((permit) => permit.user_id === currentProfile?.id);
   const parkingProcedures = canManage() ? allParkingProcedures : allParkingProcedures.filter((request) => request.requester_id === currentProfile?.id);
   const availableSpaces = parkingSpacesCache.filter((space) => space.is_active && space.is_available);
@@ -4475,9 +4475,18 @@ async function renderParkingPage() {
   setText("[data-metric='parking-pending']", String(parkingPermits.filter((permit) => permit.status === "pending").length));
   renderParkingSpaceSelect(availableSpaces);
   renderParkingProcedurePermitSelect(parkingPermits.filter((permit) => permit.status === "active" && permit.space_kind === "car"));
+  renderParkingLayout(parkingSpacesCache, parkingPermits);
   renderParkingSpaces(parkingSpacesCache);
   renderParkingPermits(parkingPermits);
   renderParkingProcedures(parkingProcedures);
+}
+
+function isCarParkingPermit(permit: ParkingPermit) {
+  return permit.space_kind === "car" || permit.parking_spaces?.kind === "car";
+}
+
+function isCarParkingProcedure(request: ParkingProcedureRequest) {
+  return request.parking_permits?.parking_spaces?.kind === "car";
 }
 
 function renderParkingSpaceSelect(spaces: ParkingSpace[]) {
@@ -4487,8 +4496,38 @@ function renderParkingSpaceSelect(spaces: ParkingSpace[]) {
   select.disabled = spaces.length === 0;
   if (submit) submit.disabled = spaces.length === 0;
   select.innerHTML = spaces.length
-    ? spaces.map((space) => `<option value="${space.id}">${parkingKindLabels[space.kind]} ${escapeHtml(space.code)}</option>`).join("")
+    ? spaces.map((space) => `<option value="${space.id}">${escapeHtml(space.code)}</option>`).join("")
     : `<option value="">空き区画はありません</option>`;
+}
+
+function renderParkingLayout(spaces: ParkingSpace[], permits: ParkingPermit[]) {
+  const container = qs("[data-parking-layout]");
+  if (!container) return;
+  if (!spaces.length) {
+    container.innerHTML = `<p class="meta">駐車区画はありません。</p>`;
+    return;
+  }
+
+  container.innerHTML = spaces
+    .map((space) => {
+      const relatedPermits = permits.filter((permit) => permit.space_id === space.id);
+      const status = parkingLayoutStatus(space, relatedPermits);
+      return `
+        <article class="parking-layout-space ${status.className}" data-parking-layout-space="${escapeHtml(space.code)}" title="${escapeHtml(space.code)} ${status.label}">
+          <strong>${escapeHtml(space.code)}</strong>
+          <span>${status.label}</span>
+          <small>${escapeHtml(space.location ?? "-")}</small>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function parkingLayoutStatus(space: ParkingSpace, permits: ParkingPermit[]) {
+  if (!space.is_active) return { className: "inactive", label: "停止中" };
+  if (permits.some((permit) => permit.status === "pending")) return { className: "pending", label: "申請中" };
+  if (!space.is_available || permits.some((permit) => permit.status === "active")) return { className: "active", label: "利用中" };
+  return { className: "available", label: "空き" };
 }
 
 function renderParkingSpaces(spaces: ParkingSpace[]) {
@@ -4507,7 +4546,7 @@ function renderParkingSpaces(spaces: ParkingSpace[]) {
         <article class="list-item">
           <div class="list-row">
             <div>
-              <strong>${parkingKindLabels[space.kind]} ${escapeHtml(space.code)}</strong>
+              <strong>${escapeHtml(space.code)}</strong>
               <p class="meta">${escapeHtml(space.location ?? "-")} / 月額 ${space.monthly_fee == null ? "-" : formatCurrency(space.monthly_fee)} / ${parkingAssignmentMethodLabels[space.assignment_method ?? "first_come"]}</p>
             </div>
             <span class="badge ${space.is_available ? "success" : "warning"}">${space.is_available ? "空き" : "利用中"}</span>
@@ -4556,7 +4595,7 @@ function renderParkingPermits(permits: ParkingPermit[]) {
         <article class="list-item">
           <div class="list-row">
             <div>
-              <strong>${parkingKindLabels[permit.parking_spaces?.kind ?? "car"]} ${escapeHtml(permit.parking_spaces?.code ?? "-")}</strong>
+              <strong>${escapeHtml(permit.parking_spaces?.code ?? "-")}</strong>
               <p class="meta">${escapeHtml(permit.vehicle_label)} / ${parkingPermitPriorityLabels[permit.priority ?? "primary"]} / ${escapeHtml(permit.resident_unit_key ?? "-")} / ${parkingAssignmentMethodLabels[permit.parking_spaces?.assignment_method ?? "first_come"]}</p>
               <p class="meta">${escapeHtml(permit.start_date)}${permit.end_date ? ` - ${escapeHtml(permit.end_date)}` : ""}</p>
             </div>
@@ -4648,7 +4687,7 @@ async function approveParkingApplication(id: string) {
     showErrorToast(error.message);
     return;
   }
-  await recordActivity("parking_permit", id, "active", "駐車・駐輪申請を承認しました。");
+  await recordActivity("parking_permit", id, "active", "駐車申請を承認しました。");
   await renderParkingPage();
 }
 
@@ -4691,7 +4730,7 @@ async function updateParkingPermitStatus(id: string, status: ParkingPermitStatus
     showErrorToast(error.message);
     return;
   }
-  await recordActivity("parking_permit", id, status, `駐車・駐輪申請を${parkingPermitStatusLabels[status]}にしました。`);
+  await recordActivity("parking_permit", id, status, `駐車申請を${parkingPermitStatusLabels[status]}にしました。`);
   const { data: activePermits } = await supabase!.from("parking_permits").select("id").eq("space_id", permit.space_id).eq("status", "active").limit(1);
   await supabase!.from("parking_spaces").update({ is_available: !(activePermits ?? []).length }).eq("id", permit.space_id);
   await renderParkingPage();
@@ -6140,9 +6179,9 @@ const activityEntityLabels: Record<string, string> = {
   meeting_agenda_item: "議案",
   meeting_session: "会議",
   notice: "通知",
-  parking_permit: "駐車・駐輪申請",
+  parking_permit: "駐車申請",
   parking_procedure: "駐車手続き",
-  parking_space: "駐車・駐輪区画",
+  parking_space: "駐車区画",
   profile: "ユーザー",
   resident_request: "住民相談",
   room: "会議室",

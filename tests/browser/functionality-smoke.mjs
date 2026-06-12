@@ -485,9 +485,13 @@ await withPreviewPage(async ({ page, baseUrl }) => {
 
   await page.goto(`${baseUrl}/parking/`, { waitUntil: "domcontentloaded" });
   await waitPage(page, "parking");
+  assert((await page.locator("#parking-kind").count()) === 0, "parking page should not expose bicycle or motorbike kind choices");
+  await waitForCondition(
+    async () => (await page.locator("[data-parking-layout-space='P-01']").filter({ hasText: "申請中" }).count()) === 1,
+    "parking layout pending P-01",
+  );
   await fillSubmit(page, "[data-parking-space-form]", {
     code: "P-TEST",
-    kind: "car",
     assignment_method: "first_come",
     location: "南側",
     monthly_fee: "15000",
@@ -560,7 +564,6 @@ await withPreviewPage(async ({ page, baseUrl }) => {
   );
   await fillSubmit(page, "[data-parking-space-form]", {
     code: "P-LOT",
-    kind: "car",
     assignment_method: "lottery",
     location: "東側",
     monthly_fee: "16000",

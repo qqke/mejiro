@@ -31,7 +31,7 @@ const protectedPages = [
   { path: "/surveys/", page: "surveys", label: "意見収集", selectors: ["[data-survey-form]", "[data-survey-list]"] },
   { path: "/safety/", page: "safety", label: "防災安否", selectors: ["[data-safety-form]", "[data-safety-list]"] },
   { path: "/tasks/", page: "tasks", label: "理事タスク", selectors: ["[data-task-form]", "[data-task-list]", "[data-task-filter='done']"] },
-  { path: "/parking/", page: "parking", label: "駐車駐輪", selectors: ["[data-parking-space-form]", "[data-parking-permit-form]", "[data-parking-space-list]", "[data-parking-permit-list]", "[data-parking-space-search]", "[data-parking-permit-search]"] },
+  { path: "/parking/", page: "parking", label: "駐車場", selectors: ["[data-parking-space-form]", "[data-parking-permit-form]", "[data-parking-space-list]", "[data-parking-permit-list]", "[data-parking-space-search]", "[data-parking-permit-search]", "[data-parking-layout]"] },
   { path: "/requests/", page: "requests", label: "相談苦情", selectors: ["[data-resident-request-form]", "[data-resident-request-list]", "[data-request-filter='in_progress']", "[data-request-search]"] },
   { path: "/circulars/", page: "circulars", label: "回覧配布", selectors: ["[data-circular-form]", "[data-circular-list]", "[data-circular-ack-list]", "[data-circular-search]", "[data-circular-ack-search]"] },
   { path: "/lending/", page: "lending", label: "鍵貸出", selectors: ["[data-lending-item-form]", "[data-lending-request-form]", "[data-lending-item-list]", "[data-lending-request-list]", "[data-lending-item-search]", "[data-lending-request-search]"] },
@@ -139,6 +139,9 @@ await withPreviewPage(async ({ page, baseUrl }) => {
     }
 
     if (route.page === "parking") {
+      assert((await page.locator("#parking-kind").count()) === 0, "parking page should not expose bicycle or motorbike kind choices");
+      await page.locator("[data-parking-layout-space='P-01']").waitFor({ state: "attached", timeout: 10000 });
+      assert((await page.locator("[data-parking-layout-space='P-01']").filter({ hasText: "申請中" }).count()) === 1, "parking layout should show pending P-01");
       await page.locator("[data-parking-space-search]").fill("北側");
       await expectText(page, "[data-parking-space-list]", "P-01", "parking space search match");
       await page.locator("[data-parking-permit-search]").fill("該当なし");

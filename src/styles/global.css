@@ -674,6 +674,135 @@ h3 {
   color: var(--danger);
 }
 
+.parking-layout-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.parking-layout-panel h2 {
+  margin-bottom: 4px;
+}
+
+.parking-layout-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.parking-layout-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.parking-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.parking-legend-dot.available {
+  background: #167044;
+}
+
+.parking-legend-dot.active {
+  background: #4b5563;
+}
+
+.parking-legend-dot.pending {
+  background: #d68a13;
+}
+
+.parking-legend-dot.inactive {
+  background: #9ca3af;
+}
+
+.parking-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(35, 48, 38, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(35, 48, 38, 0.05) 1px, transparent 1px),
+    var(--surface-soft);
+  background-size: 24px 24px;
+}
+
+.parking-layout-space {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 82px;
+  padding: 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  text-align: center;
+}
+
+.parking-layout-space strong,
+.parking-layout-space span,
+.parking-layout-space small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.parking-layout-space strong {
+  color: var(--foreground);
+  font-size: 15px;
+}
+
+.parking-layout-space span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.parking-layout-space small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.parking-layout-space.available {
+  border-color: #8fc7a5;
+  background: #f2fbf5;
+}
+
+.parking-layout-space.available span {
+  color: var(--success);
+}
+
+.parking-layout-space.active {
+  border-color: #9ca3af;
+  background: #f4f5f7;
+}
+
+.parking-layout-space.active span {
+  color: #4b5563;
+}
+
+.parking-layout-space.pending {
+  border-color: #e4b04f;
+  background: #fff9ec;
+}
+
+.parking-layout-space.pending span {
+  color: var(--accent);
+}
+
+.parking-layout-space.inactive {
+  border-style: dashed;
+  color: var(--muted);
+  opacity: 0.72;
+}
+
 .calendar {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

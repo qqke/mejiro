@@ -1,14 +1,14 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
-import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
+import { Car, CircleParking, Plus, Search } from "@lucide/astro";
 ---
 
-<AppLayout title="駐車駐輪" page="parking">
+<AppLayout title="駐車場" page="parking">
   <header class="page-head">
     <div>
       <p class="eyebrow">Parking</p>
-      <h1>駐車・駐輪</h1>
-      <p class="lead">駐車場、駐輪場、バイク置場の区画と利用申請、承認状況を管理します。</p>
+      <h1>駐車場</h1>
+      <p class="lead">駐車区画と利用申請、承認状況を管理します。</p>
     </div>
     <div class="page-actions">
       <button class="button" type="button" data-reveal-target="[data-parking-space-form]">
@@ -17,7 +17,7 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
     </div>
   </header>
 
-  <section class="grid cols-3" aria-label="駐車駐輪指標">
+  <section class="grid cols-3" aria-label="駐車場指標">
     <div class="panel metric">
       <span>空き区画</span>
       <strong data-metric="parking-available">0</strong>
@@ -39,14 +39,6 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
         <div class="field">
           <label for="parking-code">区画番号</label>
           <input class="input" id="parking-code" name="code" required />
-        </div>
-        <div class="field">
-          <label for="parking-kind">種別</label>
-          <select class="select" id="parking-kind" name="kind">
-            <option value="car">駐車場</option>
-            <option value="bicycle">駐輪場</option>
-            <option value="motorbike">バイク置場</option>
-          </select>
         </div>
         <div class="field">
           <label for="parking-assignment">配分方法</label>
@@ -78,7 +70,7 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
       </div>
       <div class="field">
         <label for="parking-vehicle">車両情報</label>
-        <input class="input" id="parking-vehicle" name="vehicle_label" placeholder="車番・自転車色など" required />
+        <input class="input" id="parking-vehicle" name="vehicle_label" placeholder="車番など" required />
       </div>
       <div class="field">
         <label for="parking-priority">優先区分</label>
@@ -134,6 +126,22 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
     </form>
   </section>
 
+  <section class="panel parking-layout-panel" aria-label="駐車場站位図" style="margin-top: 16px;">
+    <div class="list-row">
+      <div>
+        <h2><Car size={18} aria-hidden="true" /> 駐車区画図</h2>
+        <p class="meta">区画ごとの空き、利用中、申請中を確認できます。</p>
+      </div>
+      <div class="parking-layout-legend" aria-label="凡例">
+        <span><i class="parking-legend-dot available"></i>空き</span>
+        <span><i class="parking-legend-dot active"></i>利用中</span>
+        <span><i class="parking-legend-dot pending"></i>申請中</span>
+        <span><i class="parking-legend-dot inactive"></i>停止中</span>
+      </div>
+    </div>
+    <div class="parking-layout" data-parking-layout></div>
+  </section>
+
   <section class="grid cols-2" style="margin-top: 16px;">
     <div class="panel">
       <h2><Car size={18} aria-hidden="true" /> 区画一覧</h2>
@@ -144,7 +152,7 @@ import { Bike, Car, CircleParking, Plus, Search } from "@lucide/astro";
       <div class="list" data-parking-space-list></div>
     </div>
     <div class="panel">
-      <h2><Bike size={18} aria-hidden="true" /> 利用申請一覧</h2>
+      <h2><CircleParking size={18} aria-hidden="true" /> 利用申請一覧</h2>
       <label class="field list-search">
         <span><Search size={14} aria-hidden="true" /> 申請を検索</span>
         <input class="input" type="search" placeholder="車両情報・区画番号" data-parking-permit-search />
