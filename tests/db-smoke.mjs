@@ -223,6 +223,7 @@ const v28v29Path = path.join(repoRoot, "supabase", "v28_v29_migration.sql");
 const v29v30Path = path.join(repoRoot, "supabase", "v29_v30_migration.sql");
 const v30v31Path = path.join(repoRoot, "supabase", "v30_v31_migration.sql");
 const v31v32Path = path.join(repoRoot, "supabase", "v31_v32_migration.sql");
+const v32v33Path = path.join(repoRoot, "supabase", "v32_v33_migration.sql");
 
 const cluster = await createTempCluster();
 if (!cluster) {
@@ -279,6 +280,7 @@ grant execute on function auth.uid() to authenticated;
 \i '${toPosixPath(v29v30Path)}'
 \i '${toPosixPath(v30v31Path)}'
 \i '${toPosixPath(v31v32Path)}'
+\i '${toPosixPath(v32v33Path)}'
 
 insert into auth.users (id, email, raw_user_meta_data)
 values
@@ -733,6 +735,11 @@ begin
 
   insert into public.parking_procedure_requests (id, permit_id, requester_id, kind, note)
   values ('dddddddd-dddd-4ddd-8ddd-dddddddddd22', 'dddddddd-dddd-4ddd-8ddd-dddddddddd15', auth.uid(), 'certificate', '車庫証明');
+
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', false);
+
+  insert into public.parking_procedure_requests (id, permit_id, requester_id, kind, requested_return_date, note)
+  values ('dddddddd-dddd-4ddd-8ddd-dddddddddd23', 'dddddddd-dddd-4ddd-8ddd-dddddddddd15', auth.uid(), 'return_notice', current_date + 20, '管理者代理返還届');
 
   perform set_config('request.jwt.claim.sub', '12121212-1212-4121-8121-121212121212', false);
 

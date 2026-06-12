@@ -1703,6 +1703,8 @@ create table if not exists public.parking_procedure_requests (
 create or replace function public.validate_parking_procedure_request()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_permit public.parking_permits;
@@ -1715,7 +1717,8 @@ begin
     raise exception '対象の駐車利用が見つかりません。' using errcode = '23514';
   end if;
 
-  if new.requester_id <> v_permit.user_id then
+  if new.requester_id <> v_permit.user_id
+     and not app_private.has_role(array['board_member', 'admin']::public.app_role[]) then
     raise exception '本人の駐車利用のみ手続きできます。' using errcode = '23514';
   end if;
 
@@ -1954,7 +1957,13 @@ drop policy if exists "parking_procedure_requests_insert_own" on public.parking_
 create policy "parking_procedure_requests_insert_own"
 on public.parking_procedure_requests for insert
 to authenticated
-with check (requester_id = auth.uid() and status = 'pending');
+with check (
+  status = 'pending'
+  and (
+    requester_id = auth.uid()
+    or app_private.has_role(array['board_member', 'admin']::public.app_role[])
+  )
+);
 
 drop policy if exists "parking_procedure_requests_manager_update" on public.parking_procedure_requests;
 create policy "parking_procedure_requests_manager_update"

@@ -23,6 +23,7 @@ const v28v29 = await read("supabase/v28_v29_migration.sql");
 const v29v30 = await read("supabase/v29_v30_migration.sql");
 const v30v31 = await read("supabase/v30_v31_migration.sql");
 const v31v32 = await read("supabase/v31_v32_migration.sql");
+const v32v33 = await read("supabase/v32_v33_migration.sql");
 
 function getPublicTables(sql) {
   const tables = [];
@@ -146,6 +147,19 @@ for (const bit of [
 ]) {
   assert(schema.includes(bit), `schema.sql should include ${bit}`);
   assert(v31v32.includes(bit), `v31_v32_migration.sql should include ${bit}`);
+}
+
+for (const bit of [
+  "create or replace function public.validate_parking_procedure_request()",
+  "security definer",
+  "set search_path = public",
+  "app_private.has_role(array['board_member', 'admin']::public.app_role[])",
+  "drop policy if exists \"parking_procedure_requests_insert_own\"",
+  "requester_id = auth.uid()",
+  "status = 'pending'",
+]) {
+  assert(schema.includes(bit), `schema.sql should include ${bit}`);
+  assert(v32v33.includes(bit), `v32_v33_migration.sql should include ${bit}`);
 }
 
 for (const bit of [
